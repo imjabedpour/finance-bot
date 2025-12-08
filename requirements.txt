@@ -2,3 +2,5 @@ python-telegram-bot==20.7
 python-dotenv==1.0.0
 jdatetime==4.1.1
 matplotlib==3.8.2
+python-bidi==0.4.2
+arabic-reshaper==3.0.0
