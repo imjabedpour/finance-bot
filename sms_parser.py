@@ -19,11 +19,19 @@ def parse_bank_sms(text):
     translation_table = str.maketrans(persian_digits, english_digits)
     text = text.translate(translation_table)
     
-    # حذف کاما و جداکننده
+    # حذف کاما برای پردازش
     text_clean = text.replace(',', '').replace('،', '')
     
-    # تشخیص نوع تراکنش
-    expense_keywords = ['برداشت', 'خرید', 'کارت به کارت', 'پرداخت', 'کسر', 'خریدکالا', 'خرید کالا']
+    # ===== تشخیص نوع تراکنش =====
+    
+    # الگوی علامت + یا -
+    if re.search(r'\+\s*\d', text_clean):
+        result['type'] = 'income'
+    elif re.search(r'-\s*\d', text_clean):
+        result['type'] = 'expense'
+    
+    # کلمات کلیدی
+    expense_keywords = ['برداشت', 'خرید', 'کارت به کارت', 'پرداخت', 'کسر', 'خریدکالا']
     income_keywords = ['واریز', 'وصول', 'دریافت', 'حقوق', 'انتقال به']
     
     for keyword in expense_keywords:
@@ -31,38 +39,39 @@ def parse_bank_sms(text):
             result['type'] = 'expense'
             break
     
-    if not result['type']:
-        for keyword in income_keywords:
-            if keyword in text:
-                result['type'] = 'income'
-                break
+    for keyword in income_keywords:
+        if keyword in text:
+            result['type'] = 'income'
+            break
     
-    # استخراج مبلغ - الگوهای مختلف بانک‌ها
+    # ===== استخراج مبلغ =====
+    
     amount_patterns = [
-        # بانک سامان: "برداشت مبلغ 4,730,000"
-        r'(?:برداشت|واریز|خرید|پرداخت)\s*(?:مبلغ)?\s*[:\s]*(\d[\d,]*\d)',
-        # الگوی "مبلغ X ریال"
+        # الگوی +1,302,809,582 یا -500,000
+        r'[+\-]\s*(\d[\d,]*\d)',
+        # الگوی "مبلغ X"
         r'مبلغ[:\s]*(\d[\d,]*\d)',
-        # الگوی عدد بزرگ (بیش از 4 رقم) قبل از "ریال"
-        r'(\d{4,}[\d,]*)\s*(?:ریال|تومان)',
-        # الگوی + یا - با عدد بزرگ
-        r'[+\-]\s*(\d{4,}[\d,]*)',
+        # الگوی "برداشت مبلغ X"
+        r'(?:برداشت|واریز|خرید|پرداخت)\s*(?:مبلغ)?\s*[:\s]*(\d[\d,]*\d)',
+        # عدد بزرگ (بیش از 5 رقم) در خط جداگانه
+        r'^\s*[+\-]?(\d{6,}[\d,]*)\s*$',
     ]
     
     for pattern in amount_patterns:
-        match = re.search(pattern, text_clean)
+        match = re.search(pattern, text_clean, re.MULTILINE)
         if match:
             try:
                 amount_str = match.group(1).replace(',', '').replace('،', '')
                 amount = int(amount_str)
-                # فقط مبالغ بالای 1000 رو قبول کن (فیلتر شماره کارت)
+                # فقط مبالغ معقول (بالای 1000 ریال)
                 if amount >= 1000:
                     result['amount'] = amount
                     break
             except:
                 continue
     
-    # استخراج مانده
+    # ===== استخراج مانده =====
+    
     balance_patterns = [
         r'مانده[:\s]*(\d[\d,]*\d)',
         r'موجودی[:\s]*(\d[\d,]*\d)',
@@ -78,22 +87,14 @@ def parse_bank_sms(text):
             except:
                 continue
     
-    # تشخیص بانک
+    # ===== تشخیص بانک =====
+    
     banks = {
-        'سامان': 'سامان',
-        'ملت': 'ملت',
-        'ملی': 'ملی',
-        'صادرات': 'صادرات',
-        'تجارت': 'تجارت',
-        'سپه': 'سپه',
-        'پاسارگاد': 'پاسارگاد',
-        'پارسیان': 'پارسیان',
-        'رسالت': 'رسالت',
-        'شهر': 'شهر',
-        'آینده': 'آینده',
-        'مسکن': 'مسکن',
-        'کشاورزی': 'کشاورزی',
-        'رفاه': 'رفاه',
+        'سامان': 'سامان', 'ملت': 'ملت', 'ملی': 'ملی',
+        'صادرات': 'صادرات', 'تجارت': 'تجارت', 'سپه': 'سپه',
+        'پاسارگاد': 'پاسارگاد', 'پارسیان': 'پارسیان',
+        'رسالت': 'رسالت', 'شهر': 'شهر', 'آینده': 'آینده',
+        'مسکن': 'مسکن', 'کشاورزی': 'کشاورزی', 'رفاه': 'رفاه',
     }
     
     for bank_name in banks:
@@ -101,13 +102,11 @@ def parse_bank_sms(text):
             result['bank'] = banks[bank_name]
             break
     
-    # استخراج توضیحات (مثل خریدکالا)
+    # ===== دسته‌بندی پیش‌فرض =====
+    
     if 'خریدکالا' in text or 'خرید کالا' in text:
         result['description'] = 'خرید کالا'
         result['category'] = 'خرید'
-    elif 'کارت به کارت' in text:
-        result['description'] = 'کارت به کارت'
-        result['category'] = 'سایر'
     elif result['type'] == 'expense':
         result['category'] = 'سایر'
     elif result['type'] == 'income':
