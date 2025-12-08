@@ -1,4 +1,4 @@
-# sms_parser.py - پارسر پیامک‌های بانکی
+# sms_parser.py
 import re
 
 def parse_bank_sms(text):
@@ -6,7 +6,7 @@ def parse_bank_sms(text):
     
     result = {
         'amount': None,
-        'type': None,  # 'income' یا 'expense'
+        'type': None,
         'bank': None,
         'balance': None,
         'description': None,
@@ -19,44 +19,34 @@ def parse_bank_sms(text):
     translation_table = str.maketrans(persian_digits, english_digits)
     text = text.translate(translation_table)
     
-    # حذف کاراکترهای اضافی
+    # حذف کاما و جداکننده
     text_clean = text.replace(',', '').replace('،', '')
     
-    # ===== تشخیص نوع تراکنش =====
-    
-    # الگوی واریز با + در ابتدا (مثل پیام شما)
+    # تشخیص نوع تراکنش
     if re.search(r'\+\s*\d+', text_clean):
         result['type'] = 'income'
-    # الگوی برداشت با - در ابتدا
-    elif re.search(r'-\s*\d+', text_clean) and not re.search(r'مانده|موجودی', text_clean.split('-')[0]):
-        result['type'] = 'expense'
-    # کلمات کلیدی واریز
-    elif re.search(r'واریز|وصول|دریافت|حقوق|انتقال به|به حساب شما', text, re.IGNORECASE):
+    elif re.search(r'واریز|وصول|دریافت|حقوق', text):
         result['type'] = 'income'
-    # کلمات کلیدی برداشت
-    elif re.search(r'برداشت|خرید|کارت به کارت|انتقال از|پرداخت|کسر', text, re.IGNORECASE):
+    elif re.search(r'برداشت|خرید|کارت به کارت|پرداخت|کسر', text):
+        result['type'] = 'expense'
+    elif re.search(r'-\s*\d+', text_clean):
         result['type'] = 'expense'
     
-    # ===== استخراج مبلغ =====
-    
-    # الگوی مبلغ با + یا - (فرمت جدید)
-    amount_match = re.search(r'[+\-]\s*(\d[\d,]*\d|\d+)', text_clean)
+    # استخراج مبلغ با + یا -
+    amount_match = re.search(r'[+\-]\s*(\d+)', text_clean)
     if amount_match:
-        amount_str = amount_match.group(1).replace(',', '')
         try:
-            result['amount'] = int(amount_str)
+            result['amount'] = int(amount_match.group(1))
         except:
             pass
     
-    # اگه پیدا نشد، الگوهای دیگه رو امتحان کن
+    # اگه پیدا نشد
     if not result['amount']:
         patterns = [
             r'مبلغ[:\s]*(\d+)',
             r'(\d+)\s*ریال',
             r'(\d+)\s*تومان',
-            r'مبلغ\s*(\d+)',
         ]
-        
         for pattern in patterns:
             match = re.search(pattern, text_clean)
             if match:
@@ -66,53 +56,25 @@ def parse_bank_sms(text):
                 except:
                     continue
     
-    # ===== استخراج مانده =====
-    balance_patterns = [
-        r'مانده[:\s]*(\d+)',
-        r'موجودی[:\s]*(\d+)',
-    ]
+    # استخراج مانده
+    balance_match = re.search(r'مانده[:\s]*(\d+)', text_clean)
+    if balance_match:
+        try:
+            result['balance'] = int(balance_match.group(1))
+        except:
+            pass
     
-    for pattern in balance_patterns:
-        match = re.search(pattern, text_clean)
-        if match:
-            try:
-                result['balance'] = int(match.group(1))
-                break
-            except:
-                continue
-    
-    # ===== تشخیص بانک =====
-    banks = {
-        'ملت': 'ملت',
-        'ملی': 'ملی', 
-        'صادرات': 'صادرات',
-        'تجارت': 'تجارت',
-        'سپه': 'سپه',
-        'پاسارگاد': 'پاسارگاد',
-        'سامان': 'سامان',
-        'پارسیان': 'پارسیان',
-        'اقتصاد': 'اقتصاد نوین',
-        'رسالت': 'رسالت',
-        'شهر': 'شهر',
-        'آینده': 'آینده',
-        'دی': 'دی',
-        'سینا': 'سینا',
-        'مسکن': 'مسکن',
-        'کشاورزی': 'کشاورزی',
-        'رفاه': 'رفاه',
-    }
-    
-    for key, value in banks.items():
-        if key in text:
-            result['bank'] = value
+    # تشخیص بانک
+    banks = ['ملت', 'ملی', 'صادرات', 'تجارت', 'سپه', 'پاسارگاد', 'سامان', 'پارسیان', 'رسالت', 'شهر', 'آینده', 'مسکن', 'کشاورزی', 'رفاه']
+    for bank in banks:
+        if bank in text:
+            result['bank'] = bank
             break
     
-    # ===== تعیین دسته‌بندی پیش‌فرض =====
+    # دسته‌بندی پیش‌فرض
     if result['type'] == 'expense':
-        if re.search(r'خرید|فروشگاه|مارکت|سوپر', text, re.IGNORECASE):
-            result['category'] = 'خرید'
-        elif re.search(r'رستوران|فست|غذا|کافه', text, re.IGNORECASE):
-            result['category'] = 'خوراک'
-        elif re.search(r'اسنپ|تپسی|تاکسی|بنزین|پارکینگ', text, re.IGNORECASE):
-            result['category'] = 'حمل‌ونقل'
-        elif re.search(r'قبض|برق|گاز|آب|تلفن|اینترنت', text, re.
+        result['category'] = 'سایر'
+    elif result['type'] == 'income':
+        result['category'] = 'سایر'
+    
+    return result
