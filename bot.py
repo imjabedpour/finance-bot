@@ -346,6 +346,12 @@ async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پردازش همه پیام‌های متنی"""
+    
+    # چک کردن اگه ادمین منتظر آیدی کاربر هست
+    if context.user_data.get('admin_waiting_user_id'):
+        handled = await admin_show_user_transactions(update, context)
+        if handled:
+            return
     text = update.message.text
     user_id = update.effective_user.id
 
@@ -1599,6 +1605,247 @@ async def manage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================== مراحل اضافی برای ConversationHandler ==================
 
 SEARCH_TEXT = 30
+# ================== پنل ادمین ==================
+
+ADMIN_ID = 5669469598  # آیدی ادمین (تو!)
+
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پنل ادمین"""
+    user_id = update.effective_user.id
+    
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("⛔ شما اجازه دسترسی ندارید!")
+        return
+    
+    conn = sqlite3.connect('financial_bot.db')
+    cursor = conn.cursor()
+    
+    # تعداد کاربران
+    cursor.execute('SELECT COUNT(DISTINCT user_id) FROM users')
+    total_users = cursor.fetchone()[0]
+    
+    # تعداد کل تراکنش‌ها
+    cursor.execute('SELECT COUNT(*) FROM transactions')
+    total_transactions = cursor.fetchone()[0]
+    
+    # کل درآمد ثبت شده
+    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = ?', ('income',))
+    total_income = cursor.fetchone()[0]
+    
+    # کل هزینه ثبت شده
+    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = ?', ('expense',))
+    total_expense = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    text = f"""
+🔐 **پنل ادمین**
+
+📊 **آمار کلی ربات:**
+
+👥 تعداد کاربران: **{total_users}**
+📝 تعداد تراکنش‌ها: **{total_transactions}**
+💰 کل درآمد ثبت شده: **{total_income:,}** ریال
+💸 کل هزینه ثبت شده: **{total_expense:,}** ریال
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin_users")],
+        [InlineKeyboardButton("📊 تراکنش‌های کاربر", callback_data="admin_user_transactions")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+
+async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """لیست همه کاربران"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await query.edit_message_text("⛔ دسترسی ندارید!")
+        return
+    
+    conn = sqlite3.connect('financial_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT u.user_id, u.username, u.first_name, u.joined_date,
+               COUNT(t.id) as tx_count,
+               COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END), 0) as income,
+               COALESCE(SUM(CASE WHEN t.type='expense' THEN t.amount ELSE 0 END), 0) as expense
+        FROM users u
+        LEFT JOIN transactions t ON u.user_id = t.user_id
+        GROUP BY u.user_id
+        ORDER BY tx_count DESC
+        LIMIT 20
+    ''')
+    users = cursor.fetchall()
+    conn.close()
+    
+    if not users:
+        await query.edit_message_text("👥 هنوز کاربری ثبت نشده!")
+        return
+    
+    text = "👥 **لیست کاربران:**\n\n"
+    
+    for u in users:
+        uid, username, first_name, joined, tx_count, income, expense = u
+        name = first_name or username or "بدون نام"
+        username_text = f"@{username}" if username else "-"
+        balance = income - expense
+        
+        text += f"👤 **{name}**\n"
+        text += f"├ 🆔 `{uid}`\n"
+        text += f"├ 📱 {username_text}\n"
+        text += f"├ 📝 تراکنش‌ها: {tx_count}\n"
+        text += f"└ 💰 موجودی: {balance:,} ریال\n\n"
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 بازگشت به پنل ادمین", callback_data="admin_back")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+
+async def admin_user_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """درخواست آیدی کاربر برای نمایش تراکنش‌ها"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await query.edit_message_text("⛔ دسترسی ندارید!")
+        return
+    
+    await query.edit_message_text(
+        "🔍 **مشاهده تراکنش‌های کاربر**\n\n"
+        "آیدی عددی کاربر رو بفرست:\n\n"
+        "(مثال: `5669469598`)\n\n"
+        "یا /cancel برای انصراف",
+        parse_mode='Markdown'
+    )
+    
+    context.user_data['admin_waiting_user_id'] = True
+
+async def admin_show_user_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش تراکنش‌های یک کاربر خاص"""
+    if not context.user_data.get('admin_waiting_user_id'):
+        return False
+    
+    if update.effective_user.id != ADMIN_ID:
+        return False
+    
+    try:
+        target_user_id = int(update.message.text)
+    except ValueError:
+        await update.message.reply_text("❌ آیدی باید عدد باشه!")
+        return True
+    
+    conn = sqlite3.connect('financial_bot.db')
+    cursor = conn.cursor()
+    
+    # اطلاعات کاربر
+    cursor.execute('SELECT username, first_name FROM users WHERE user_id = ?', (target_user_id,))
+    user_info = cursor.fetchone()
+    
+    if not user_info:
+        await update.message.reply_text("❌ کاربر پیدا نشد!")
+        context.user_data.pop('admin_waiting_user_id', None)
+        conn.close()
+        return True
+    
+    username, first_name = user_info
+    name = first_name or username or "بدون نام"
+    
+    # تراکنش‌های کاربر
+    cursor.execute('''
+        SELECT amount, type, category, description, date
+        FROM transactions
+        WHERE user_id = ?
+        ORDER BY date DESC
+        LIMIT 20
+    ''', (target_user_id,))
+    transactions = cursor.fetchall()
+    
+    # آمار کاربر
+    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND type = ?', (target_user_id, 'income'))
+    total_income = cursor.fetchone()[0]
+    
+    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND type = ?', (target_user_id, 'expense'))
+    total_expense = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    text = f"📊 **تراکنش‌های {name}**\n"
+    text += f"🆔 `{target_user_id}`\n\n"
+    text += f"💰 درآمد: {total_income:,} ریال\n"
+    text += f"💸 هزینه: {total_expense:,} ریال\n"
+    text += f"📈 موجودی: {total_income - total_expense:,} ریال\n\n"
+    
+    if transactions:
+        text += "📋 **آخرین تراکنش‌ها:**\n\n"
+        for t in transactions:
+            amount, t_type, category, desc, date = t
+            emoji = "🟢" if t_type == "income" else "🔴"
+            sign = "+" if t_type == "income" else "-"
+            text += f"{emoji} {sign}{amount:,} | {category} | {date}\n"
+    else:
+        text += "📭 تراکنشی ثبت نشده!"
+    
+    await update.message.reply_text(text, parse_mode='Markdown')
+    
+    context.user_data.pop('admin_waiting_user_id', None)
+    return True
+
+async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بازگشت به پنل ادمین"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await query.edit_message_text("⛔ دسترسی ندارید!")
+        return
+    
+    conn = sqlite3.connect('financial_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT COUNT(DISTINCT user_id) FROM users')
+    total_users = cursor.fetchone()[0]
+    
+    cursor.execute('SELECT COUNT(*) FROM transactions')
+    total_transactions = cursor.fetchone()[0]
+    
+    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = ?', ('income',))
+    total_income = cursor.fetchone()[0]
+    
+    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = ?', ('expense',))
+    total_expense = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    text = f"""
+🔐 **پنل ادمین**
+
+📊 **آمار کلی ربات:**
+
+👥 تعداد کاربران: **{total_users}**
+📝 تعداد تراکنش‌ها: **{total_transactions}**
+💰 کل درآمد ثبت شده: **{total_income:,}** ریال
+💸 کل هزینه ثبت شده: **{total_expense:,}** ریال
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin_users")],
+        [InlineKeyboardButton("📊 تراکنش‌های کاربر", callback_data="admin_user_transactions")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 
 # ================== تابع اصلی ==================
 
@@ -1682,6 +1929,7 @@ def main():
     application.add_handler(CommandHandler("transactions", transactions_command))
     application.add_handler(CommandHandler("chart", chart))
     application.add_handler(CommandHandler("manage", manage))
+    application.add_handler(CommandHandler("admin", admin))
 
     # -------------------- هندلرهای مکالمه --------------------
     application.add_handler(conv_handler)
@@ -1709,6 +1957,11 @@ def main():
     application.add_handler(CallbackQueryHandler(manage_stats, pattern="^manage_stats$"))
     application.add_handler(CallbackQueryHandler(manage_delete_all, pattern="^manage_delete_all$"))
     application.add_handler(CallbackQueryHandler(confirm_delete_all, pattern="^confirm_delete_all$"))
+
+        # -------------------- کالبک‌های ادمین --------------------
+    application.add_handler(CallbackQueryHandler(admin_users, pattern="^admin_users$"))
+    application.add_handler(CallbackQueryHandler(admin_user_transactions, pattern="^admin_user_transactions$"))
+    application.add_handler(CallbackQueryHandler(admin_back, pattern="^admin_back$"))
 
     # -------------------- کالبک‌های ویرایش/حذف تراکنش --------------------
     application.add_handler(CallbackQueryHandler(edit_field_category, pattern="^edit_field_category$"))
