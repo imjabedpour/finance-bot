@@ -1603,58 +1603,72 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================== کالبک نمودار ==================
 
 async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش نمودار از کالبک"""
+    """نمایش نمودار امروز"""
     query = update.callback_query
     await query.answer()
-
+    
     user_id = update.effective_user.id
-
+    
     await query.edit_message_text("📊 در حال ساخت نمودار...")
-
+    
     try:
-        # اتصال به دیتابیس
+        import jdatetime
+        today = jdatetime.datetime.now()
+        
+        # دو فرمت تاریخ برای سازگاری
+        date_pattern1 = today.strftime('%Y/%m/%d')  # با صفر: 1404/09/18
+        date_pattern2 = f"{today.year}/{today.month}/{today.day}"  # بدون صفر: 1404/9/18
+        
         db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-
+        
+        # فقط تراکنش‌های امروز
         cursor.execute('''
             SELECT id, user_id, amount, type, category, description, date
             FROM transactions
-            WHERE user_id = ?
+            WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
             ORDER BY date DESC
-        ''', (user_id,))
-
+        ''', (user_id, f'{date_pattern1}%', f'{date_pattern2}%'))
+        
         transactions_list = cursor.fetchall()
         conn.close()
-
+        
+        print(f"📊 تراکنش‌های امروز: {len(transactions_list)}")
+        for tx in transactions_list:
+            print(f"  → {tx}")
+        
         if not transactions_list:
-            await query.message.reply_text("❌ هنوز تراکنشی ثبت نشده!")
+            await query.message.reply_text("❌ تراکنشی برای امروز ثبت نشده!")
             return
-
-        # ساخت نمودار دایره‌ای
+        
+        # نمودار دایره‌ای
+        from charts import create_pie_chart, create_bar_chart
+        
         pie_chart = create_pie_chart(transactions_list)
-
         if pie_chart:
             await query.message.reply_photo(
-                photo=pie_chart,  # ✅ مستقیم BytesIO
-                caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی"
+                photo=pie_chart,
+                caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی (امروز)"
             )
-
-        # ساخت نمودار میله‌ای
+        
+        # نمودار میله‌ای
         bar_chart = create_bar_chart(transactions_list)
-
         if bar_chart:
             await query.message.reply_photo(
-                photo=bar_chart,  # ✅ مستقیم BytesIO
-                caption="📈 مقایسه درآمد و هزینه"
+                photo=bar_chart,
+                caption="📈 مقایسه درآمد و هزینه (امروز)"
             )
-
+        
         if not pie_chart and not bar_chart:
-            await query.message.reply_text("❌ داده‌ای برای نمایش نمودار وجود ندارد.")
-
+            await query.message.reply_text("❌ داده‌ای برای نمودار وجود ندارد.")
+            
     except Exception as e:
-        print(f"❌ خطا در نمودار: {e}")
-        await query.message.reply_text(f"❌ خطا در ساخت نمودار: {e}")
+        print(f"❌ خطا: {e}")
+        import traceback
+        traceback.print_exc()
+        await query.message.reply_text(f"❌ خطا: {e}")
+
 
 
 # ================== کالبک مدیریت ==================
