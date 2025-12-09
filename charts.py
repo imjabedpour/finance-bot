@@ -9,39 +9,52 @@ from collections import defaultdict
 
 plt.rcParams['font.family'] = 'DejaVu Sans'
 
+
 def reshape_persian(text):
     """تبدیل متن فارسی برای نمایش صحیح"""
-    reshaped = arabic_reshaper.reshape(text)
-    return get_display(reshaped)
+    try:
+        reshaped = arabic_reshaper.reshape(str(text))
+        return get_display(reshaped)
+    except:
+        return str(text)
 
 
 def create_pie_chart(transactions):
     """نمودار دایره‌ای هزینه‌ها"""
+    print("📊 شروع create_pie_chart...")
+    
     category_totals = defaultdict(int)
 
     for tx in transactions:
-        # tx: (id, user_id, amount, type, category, description, date)
-        if len(tx) >= 5:
-            amount = int(tx[2])  # ✅ تبدیل به int
-            tx_type = tx[3]
-            category = tx[4]
+        try:
+            # tx: (id, user_id, amount, type, category, description, date)
+            if len(tx) >= 5:
+                amount = int(tx[2])  # ✅ تبدیل به int
+                tx_type = str(tx[3])
+                category = str(tx[4])
 
-            if tx_type == 'expense':
-                category_totals[category] += amount
+                if tx_type == 'expense':
+                    category_totals[category] += amount
+        except Exception as e:
+            print(f"⚠️ خطا در پردازش تراکنش: {e}")
+            continue
+
+    print(f"📊 دسته‌بندی‌ها: {dict(category_totals)}")
 
     if not category_totals:
+        print("⚠️ هیچ هزینه‌ای یافت نشد")
         return None
 
     categories = list(category_totals.keys())
     amounts = list(category_totals.values())
     total = sum(amounts)
-    percentages = [(a / total) * 100 for a in amounts]
 
-    colors = ['#4A90D9', '#7CB9E8', '#F4B942', '#5CB85C', '#D9534F', 
-              '#9B59B6', '#1ABC9C', '#E67E22', '#34495E', '#95A5A6']
+    print(f"📊 مجموع هزینه: {total}")
+
+    colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+              '#FF9F40', '#FF6384', '#C9CBCF', '#7BC225', '#B97CD1']
 
     fig, ax = plt.subplots(figsize=(10, 8), facecolor='white')
-    ax.set_facecolor('white')
 
     wedges, texts, autotexts = ax.pie(
         amounts,
@@ -54,31 +67,14 @@ def create_pie_chart(transactions):
     )
 
     for text in texts:
-        text.set_color('#333333')
         text.set_fontsize(11)
-
     for autotext in autotexts:
         autotext.set_color('white')
         autotext.set_fontsize(10)
         autotext.set_weight('bold')
 
     title = reshape_persian(f'هزینه‌ها - مجموع: {total:,} ریال')
-    ax.set_title(title, color='#333333', fontsize=14, pad=20)
-
-    legend_labels = [
-        f'{reshape_persian(cat)}: {amt:,} ({pct:.1f}%)'
-        for cat, amt, pct in zip(categories, amounts, percentages)
-    ]
-
-    legend = ax.legend(
-        wedges, legend_labels,
-        title=reshape_persian('دسته‌بندی'),
-        loc='center left',
-        bbox_to_anchor=(1, 0, 0.5, 1),
-        facecolor='white',
-        edgecolor='#E0E0E0'
-    )
-    legend.get_title().set_color('#333333')
+    ax.set_title(title, fontsize=14, pad=20)
 
     plt.tight_layout()
 
@@ -87,33 +83,42 @@ def create_pie_chart(transactions):
     buf.seek(0)
     plt.close(fig)
 
+    print("✅ نمودار دایره‌ای ساخته شد")
     return buf
 
 
 def create_bar_chart(transactions):
     """نمودار میله‌ای مقایسه درآمد و هزینه"""
+    print("📊 شروع create_bar_chart...")
+    
     total_income = 0
     total_expense = 0
 
     for tx in transactions:
-        if len(tx) >= 4:
-            amount = int(tx[2])  # ✅ تبدیل به int
-            tx_type = tx[3]
+        try:
+            if len(tx) >= 4:
+                amount = int(tx[2])  # ✅ تبدیل به int
+                tx_type = str(tx[3])
 
-            if tx_type == 'income':
-                total_income += amount
-            else:
-                total_expense += amount
+                if tx_type == 'income':
+                    total_income += amount
+                elif tx_type == 'expense':
+                    total_expense += amount
+        except Exception as e:
+            print(f"⚠️ خطا در پردازش: {e}")
+            continue
+
+    print(f"📊 درآمد: {total_income}, هزینه: {total_expense}")
 
     if total_income == 0 and total_expense == 0:
+        print("⚠️ داده‌ای برای نمودار نیست")
         return None
 
     fig, ax = plt.subplots(figsize=(8, 6), facecolor='white')
-    ax.set_facecolor('white')
 
     categories = [reshape_persian('درآمد'), reshape_persian('هزینه')]
     values = [total_income, total_expense]
-    colors = ['#4A90D9', '#D9534F']
+    colors = ['#4BC0C0', '#FF6384']
 
     bars = ax.bar(categories, values, color=colors, width=0.5, edgecolor='white')
 
@@ -124,24 +129,19 @@ def create_bar_chart(transactions):
                     xytext=(0, 3),
                     textcoords="offset points",
                     ha='center', va='bottom',
-                    color='#333333', fontsize=12, weight='bold')
+                    fontsize=12, weight='bold')
 
-    ax.set_ylabel(reshape_persian('مبلغ (ریال)'), color='#333333')
-    ax.tick_params(colors='#333333')
+    ax.set_ylabel(reshape_persian('مبلغ (ریال)'))
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('#E0E0E0')
-    ax.spines['bottom'].set_color('#E0E0E0')
-    ax.yaxis.grid(True, linestyle='-', alpha=0.3, color='#E0E0E0')
+    ax.yaxis.grid(True, linestyle='--', alpha=0.3)
 
     balance = total_income - total_expense
+    balance_color = '#4BC0C0' if balance >= 0 else '#FF6384'
     balance_text = reshape_persian(f'تراز: {balance:,} ریال')
-    balance_color = '#5CB85C' if balance >= 0 else '#D9534F'
 
-    title = reshape_persian('مقایسه درآمد و هزینه')
-    ax.set_title(title, color='#333333', fontsize=14)
-    
-    ax.text(0.5, 0.95, balance_text, transform=ax.transAxes, 
+    ax.set_title(reshape_persian('مقایسه درآمد و هزینه'), fontsize=14)
+    ax.text(0.5, 0.95, balance_text, transform=ax.transAxes,
             ha='center', color=balance_color, fontsize=12, weight='bold')
 
     plt.tight_layout()
@@ -151,4 +151,5 @@ def create_bar_chart(transactions):
     buf.seek(0)
     plt.close(fig)
 
+    print("✅ نمودار میله‌ای ساخته شد")
     return buf
