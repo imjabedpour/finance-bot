@@ -1883,14 +1883,15 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """گزارش روزانه"""
     user_id = update.effective_user.id
 
-    # تاریخ امروز شمسی - بدون صفر اضافی برای تطابق با دیتابیس
+    # تاریخ امروز شمسی - با % برای LIKE query
     now = jdatetime.datetime.now()
-    today_pattern = f"{now.year}/{now.month}/{now.day}%"  # مثال: "1404/9/18%"
+    today_pattern = now.strftime('%Y/%m/%d') + "%"  # "1404/09/18%"
+    today_display = now.strftime('%Y/%m/%d')  # برای نمایش
 
     conn = sqlite3.connect('financial_bot.db')
     cursor = conn.cursor()
 
-    # درآمد امروز (با LIKE برای نادیده گرفتن ساعت)
+    # درآمد امروز (LIKE برای نادیده گرفتن ساعت)
     cursor.execute('''
         SELECT COALESCE(SUM(amount), 0)
         FROM transactions
@@ -1936,9 +1937,6 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn.close()
 
-    # تاریخ نمایشی
-    today_display = f"{now.year}/{now.month}/{now.day}"
-
     # ساخت متن گزارش
     text = f"📅 **گزارش امروز** ({today_display})\n\n"
 
@@ -1951,7 +1949,6 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"├ 📈 تراز: **{today_income - today_expense:,}** ریال\n"
         text += f"└ 📝 تعداد: {today_count} تراکنش\n\n"
 
-        # هزینه بر اساس دسته‌بندی
         if expense_by_category:
             text += "📁 **هزینه‌ها بر اساس دسته:**\n"
             for cat, amount in expense_by_category:
@@ -1959,7 +1956,6 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"├ {cat}: {amount:,} ({percent:.0f}%)\n"
             text += "\n"
 
-        # لیست تراکنش‌ها
         if today_transactions:
             text += "📋 **تراکنش‌های امروز:**\n"
             for t in today_transactions:
@@ -1981,6 +1977,7 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             text, parse_mode='Markdown', reply_markup=reply_markup
         )
+
 
 
 
