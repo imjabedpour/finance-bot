@@ -2166,10 +2166,84 @@ async def test_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != 5669469598:
         await update.message.reply_text("⛔ فقط ادمین!")
         return
-    
+
     await update.message.reply_text("⏳ در حال ارسال گزارش تست...")
-    await send_nightly_report_to_admin(context)
-    await update.message.reply_text("✅ گزارش ارسال شد!")
+    
+    try:
+        ADMIN_ID = 5669469598
+        
+        # اتصال به دیتابیس
+        db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        now = jdatetime.datetime.now()
+        pattern1 = f"{now.year}/{now.month}/{now.day}%"
+        pattern2 = f"{now.year}/{now.month:02d}/{now.day:02d}%"
+        today_display = f"{now.year}/{now.month:02d}/{now.day:02d}"
+
+        # درآمد امروز
+        cursor.execute('''
+            SELECT COALESCE(SUM(amount), 0)
+            FROM transactions
+            WHERE user_id = ? AND type = 'income' AND (date LIKE ? OR date LIKE ?)
+        ''', (ADMIN_ID, pattern1, pattern2))
+        today_income = cursor.fetchone()[0]
+
+        # هزینه امروز
+        cursor.execute('''
+            SELECT COALESCE(SUM(amount), 0)
+            FROM transactions
+            WHERE user_id = ? AND type = 'expense' AND (date LIKE ? OR date LIKE ?)
+        ''', (ADMIN_ID, pattern1, pattern2))
+        today_expense = cursor.fetchone()[0]
+
+        # تعداد تراکنش‌ها
+        cursor.execute('''
+            SELECT COUNT(*)
+            FROM transactions
+            WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
+        ''', (ADMIN_ID, pattern1, pattern2))
+        today_count = cursor.fetchone()[0]
+
+        # تراکنش‌ها
+        cursor.execute('''
+            SELECT amount, type, category, description
+            FROM transactions
+            WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
+            ORDER BY id DESC
+            LIMIT 5
+        ''', (ADMIN_ID, pattern1, pattern2))
+        today_transactions = cursor.fetchall()
+
+        conn.close()
+
+        # ساخت پیام
+        text = f"🌙 **گزارش تست** ({today_display})\n\n"
+
+        if today_count == 0:
+            text += "📭 امروز تراکنشی ثبت نشده!"
+        else:
+            text += f"📊 **خلاصه امروز:**\n"
+            text += f"├ 💰 درآمد: **{today_income:,}** ریال\n"
+            text += f"├ 💸 هزینه: **{today_expense:,}** ریال\n"
+            text += f"├ 📈 تراز: **{today_income - today_expense:,}** ریال\n"
+            text += f"└ 📝 تعداد: {today_count} تراکنش\n\n"
+
+            if today_transactions:
+                text += "📋 **آخرین تراکنش‌ها:**\n"
+                for t in today_transactions:
+                    amount, t_type, category, desc = t
+                    emoji = "🟢" if t_type == "income" else "🔴"
+                    sign = "+" if t_type == "income" else "-"
+                    text += f"{emoji} {sign}{amount:,} | {category}\n"
+
+        text += "\n✅ تست موفق!"
+
+        await update.message.reply_text(text, parse_mode='Markdown')
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطا: {e}")
 
 # ================== تابع اصلی ==================
 
