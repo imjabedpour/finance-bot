@@ -22,7 +22,7 @@ def create_pie_chart(transactions):
     for tx in transactions:
         # tx: (id, user_id, amount, type, category, description, date)
         if len(tx) >= 5:
-            amount = tx[2]
+            amount = int(tx[2])  # ✅ تبدیل به int
             tx_type = tx[3]
             category = tx[4]
 
@@ -97,7 +97,7 @@ def create_bar_chart(transactions):
 
     for tx in transactions:
         if len(tx) >= 4:
-            amount = tx[2]
+            amount = int(tx[2])  # ✅ تبدیل به int
             tx_type = tx[3]
 
             if tx_type == 'income':
@@ -152,24 +152,3 @@ def create_bar_chart(transactions):
     plt.close(fig)
 
     return buf
-
-
-# تست
-if __name__ == "__main__":
-    test_transactions = [
-        (1, 123, 500000, 'expense', 'خوراک', 'ناهار', '1404/09/18'),
-        (2, 123, 200000, 'expense', 'حمل‌ونقل', 'تاکسی', '1404/09/18'),
-        (3, 123, 5000000, 'income', 'حقوق', 'ماهانه', '1404/09/18'),
-    ]
-
-    chart = create_pie_chart(test_transactions)
-    if chart:
-        with open('test_pie.png', 'wb') as f:
-            f.write(chart.read())
-        print("✅ نمودار دایره‌ای ساخته شد")
-
-    chart2 = create_bar_chart(test_transactions)
-    if chart2:
-        with open('test_bar.png', 'wb') as f:
-            f.write(chart2.read())
-        print("✅ نمودار میله‌ای ساخته شد")
