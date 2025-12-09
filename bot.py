@@ -1883,62 +1883,64 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """گزارش روزانه"""
     user_id = update.effective_user.id
 
-    # تاریخ امروز شمسی - هر دو فرمت
+    # تاریخ امروز شمسی - بدون صفر اضافی برای تطابق با دیتابیس
     now = jdatetime.datetime.now()
-    today_formatted = now.strftime('%Y/%m/%d')  # 1404/09/18
-    today_simple = f"{now.year}/{now.month}/{now.day}"  # 1404/9/18
+    today_pattern = f"{now.year}/{now.month}/{now.day}%"  # مثال: "1404/9/18%"
 
     conn = sqlite3.connect('financial_bot.db')
     cursor = conn.cursor()
 
-    # درآمد امروز
+    # درآمد امروز (با LIKE برای نادیده گرفتن ساعت)
     cursor.execute('''
         SELECT COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE user_id = ? AND type = 'income' AND (date = ? OR date = ?)
-    ''', (user_id, today_formatted, today_simple))
+        WHERE user_id = ? AND type = 'income' AND date LIKE ?
+    ''', (user_id, today_pattern))
     today_income = cursor.fetchone()[0]
 
     # هزینه امروز
     cursor.execute('''
         SELECT COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND (date = ? OR date = ?)
-    ''', (user_id, today_formatted, today_simple))
+        WHERE user_id = ? AND type = 'expense' AND date LIKE ?
+    ''', (user_id, today_pattern))
     today_expense = cursor.fetchone()[0]
 
     # تعداد تراکنش‌های امروز
     cursor.execute('''
         SELECT COUNT(*)
         FROM transactions
-        WHERE user_id = ? AND (date = ? OR date = ?)
-    ''', (user_id, today_formatted, today_simple))
+        WHERE user_id = ? AND date LIKE ?
+    ''', (user_id, today_pattern))
     today_count = cursor.fetchone()[0]
 
     # لیست هزینه‌های امروز با دسته‌بندی
     cursor.execute('''
         SELECT category, SUM(amount)
         FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND (date = ? OR date = ?)
+        WHERE user_id = ? AND type = 'expense' AND date LIKE ?
         GROUP BY category
         ORDER BY SUM(amount) DESC
-    ''', (user_id, today_formatted, today_simple))
+    ''', (user_id, today_pattern))
     expense_by_category = cursor.fetchall()
 
     # لیست تراکنش‌های امروز
     cursor.execute('''
         SELECT amount, type, category, description
         FROM transactions
-        WHERE user_id = ? AND (date = ? OR date = ?)
+        WHERE user_id = ? AND date LIKE ?
         ORDER BY id DESC
         LIMIT 10
-    ''', (user_id, today_formatted, today_simple))
+    ''', (user_id, today_pattern))
     today_transactions = cursor.fetchall()
 
     conn.close()
 
+    # تاریخ نمایشی
+    today_display = f"{now.year}/{now.month}/{now.day}"
+
     # ساخت متن گزارش
-    text = f"📅 **گزارش امروز** ({today_formatted})\n\n"
+    text = f"📅 **گزارش امروز** ({today_display})\n\n"
 
     if today_count == 0:
         text += "📭 امروز هنوز تراکنشی ثبت نشده!"
@@ -1949,6 +1951,7 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"├ 📈 تراز: **{today_income - today_expense:,}** ریال\n"
         text += f"└ 📝 تعداد: {today_count} تراکنش\n\n"
 
+        # هزینه بر اساس دسته‌بندی
         if expense_by_category:
             text += "📁 **هزینه‌ها بر اساس دسته:**\n"
             for cat, amount in expense_by_category:
@@ -1956,6 +1959,7 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"├ {cat}: {amount:,} ({percent:.0f}%)\n"
             text += "\n"
 
+        # لیست تراکنش‌ها
         if today_transactions:
             text += "📋 **تراکنش‌های امروز:**\n"
             for t in today_transactions:
@@ -1977,6 +1981,7 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             text, parse_mode='Markdown', reply_markup=reply_markup
         )
+
 
 
 async def daily_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
