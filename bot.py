@@ -1350,37 +1350,49 @@ async def manage_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    # گرفتن تراکنش‌های ماه جاری
+    # تاریخ شمسی
     now = jdatetime.datetime.now()
-    month_start = f"{now.year}/{now.month:02d}/01"
+    
+    # دو الگو برای سازگاری با فرمت‌های مختلف تاریخ
+    pattern1 = f"{now.year}/{now.month}/%"      # 1404/9/...
+    pattern2 = f"{now.year}/{now.month:02d}/%"  # 1404/09/...
 
-    conn = sqlite3.connect('financial_bot.db')
+    db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     # کل درآمد ماه
     cursor.execute('''
         SELECT COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE user_id = ? AND type = 'income' AND date >= ?
-    ''', (user_id, month_start))
+        WHERE user_id = ? AND type = 'income' AND (date LIKE ? OR date LIKE ?)
+    ''', (user_id, pattern1, pattern2))
     month_income = cursor.fetchone()[0]
 
     # کل هزینه ماه
     cursor.execute('''
         SELECT COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND date >= ?
-    ''', (user_id, month_start))
+        WHERE user_id = ? AND type = 'expense' AND (date LIKE ? OR date LIKE ?)
+    ''', (user_id, pattern1, pattern2))
     month_expense = cursor.fetchone()[0]
+
+    # تعداد تراکنش‌ها
+    cursor.execute('''
+        SELECT COUNT(*)
+        FROM transactions
+        WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
+    ''', (user_id, pattern1, pattern2))
+    month_count = cursor.fetchone()[0]
 
     # هزینه بر اساس دسته‌بندی
     cursor.execute('''
         SELECT category, SUM(amount)
         FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND date >= ?
+        WHERE user_id = ? AND type = 'expense' AND (date LIKE ? OR date LIKE ?)
         GROUP BY category
         ORDER BY SUM(amount) DESC
-    ''', (user_id, month_start))
+    ''', (user_id, pattern1, pattern2))
     expense_by_category = cursor.fetchall()
 
     conn.close()
@@ -1392,26 +1404,26 @@ async def manage_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     month_name = month_names[now.month]
 
-    text = f"""
-📊 **گزارش {month_name} {now.year}**
+    text = f"📊 **گزارش {month_name} {now.year}**\n\n"
+    
+    if month_count == 0:
+        text += "📭 این ماه تراکنشی ثبت نشده!"
+    else:
+        text += f"💰 **درآمد:** {month_income:,} ریال\n"
+        text += f"💸 **هزینه:** {month_expense:,} ریال\n"
+        text += f"📈 **تراز:** {month_income - month_expense:,} ریال\n"
+        text += f"📝 **تعداد:** {month_count} تراکنش\n\n"
 
-💰 **درآمد:** {month_income:,} ریال
-💸 **هزینه:** {month_expense:,} ریال
-📈 **تراز:** {month_income - month_expense:,} ریال
-
-"""
-
-    if expense_by_category:
-        text += "📁 **هزینه بر اساس دسته:**\n"
-        for cat, amount in expense_by_category:
-            percent = (amount / month_expense * 100) if month_expense > 0 else 0
-            text += f"├ {cat}: {amount:,} ({percent:.1f}%)\n"
+        if expense_by_category:
+            text += "📁 **هزینه بر اساس دسته:**\n"
+            for cat, amount in expense_by_category:
+                percent = (amount / month_expense * 100) if month_expense > 0 else 0
+                text += f"├ {cat}: {amount:,} ({percent:.1f}%)\n"
 
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="manage")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
-
 
 # ================== آمار کلی ==================
 
@@ -1422,7 +1434,8 @@ async def manage_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    conn = sqlite3.connect('financial_bot.db')
+    db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     # تعداد کل تراکنش‌ها
@@ -1451,8 +1464,10 @@ async def manage_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn.close()
 
-    text = f"""
-📈 **آمار کلی**
+    if total_count == 0:
+        text = "📈 **آمار کلی**\n\n📭 هنوز تراکنشی ثبت نشده!"
+    else:
+        text = f"""📈 **آمار کلی**
 
 📊 **تعداد تراکنش:** {total_count}
 💰 **کل درآمد:** {total_income:,} ریال
@@ -1468,6 +1483,7 @@ async def manage_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+
 # ================== جستجو ==================
 
 async def manage_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
