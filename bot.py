@@ -1552,7 +1552,7 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 پیام بانک رو مستقیم فوروارد کن!
 """
 
-       keyboard = [
+    keyboard = [
         [
             InlineKeyboardButton("➕ ثبت هزینه", callback_data="new_expense"),
             InlineKeyboardButton("➕ ثبت درآمد", callback_data="new_income"),
