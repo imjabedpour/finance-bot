@@ -1,4 +1,4 @@
-# charts.py - نسخه اصلاح شده
+# charts.py - نسخه نهایی
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -20,75 +20,102 @@ def reshape_persian(text):
 
 def create_pie_chart(transactions):
     """نمودار دایره‌ای هزینه‌ها"""
-    print(f"📊 create_pie_chart شروع - تعداد: {len(transactions)}")
+    print(f"📊 create_pie_chart - تعداد تراکنش: {len(transactions)}")
     
     if not transactions:
-        print("⚠️ لیست خالی")
         return None
     
-    # نمونه برای دیباگ
-    print(f"📊 نمونه: {transactions[0]}")
+    # دیباگ
+    print(f"📊 نمونه داده: {transactions[0]}")
+    print(f"📊 تعداد فیلد: {len(transactions[0])}")
     
     category_totals = defaultdict(int)
 
     for tx in transactions:
         try:
-            # پیدا کردن amount و type و category
-            # بررسی هر فیلد برای تشخیص درست
+            # فرمت: (id, user_id, amount, type, category, description, date)
+            # یا: (type, amount, category, description, date)
+            # یا: (amount, type, category, description, date)
             
             amount = None
             tx_type = None
             category = None
             
+            # اول پیدا کن کدوم فیلد چیه
             for i, field in enumerate(tx):
-                field_str = str(field)
+                field_str = str(field).strip()
                 
-                # اگه عدده، احتمالاً amount هست
-                if amount is None:
-                    try:
-                        test_int = int(field)
-                        if test_int > 100:  # مبالغ معمولاً بزرگن
-                            amount = test_int
-                            continue
-                    except:
-                        pass
-                
-                # اگه income یا expense هست
+                # تشخیص type
                 if field_str in ['income', 'expense']:
                     tx_type = field_str
                     continue
                 
-                # بقیه فیلدهای متنی فارسی احتمالاً category هستن
-                if category is None and field_str not in ['income', 'expense']:
-                    if any(c in field_str for c in ['خوراک', 'حمل', 'قبوض', 'خرید', 'تفریح', 'سلامت', 'آموزش', 'سایر', 'حقوق', 'هدیه', 'سرمایه', 'پروژه']):
-                        category = field_str
-
-            # اگه پیدا نشد، از ایندکس ثابت استفاده کن
-            if amount is None or tx_type is None or category is None:
-                # فرمت: (type, amount, category, desc, date)
-                tx_type = str(tx[0])
-                # amount باید عدد باشه - پیداش کن
-                for field in tx[1:]:
+                # تشخیص amount (عدد بزرگ)
+                if amount is None:
                     try:
-                        amount = int(field)
-                        break
+                        num = int(str(field).replace(',', ''))
+                        if num > 1000:  # مبالغ معمولاً بیشتر از 1000 هستن
+                            amount = num
+                            continue
                     except:
-                        continue
-                category = str(tx[2]) if len(tx) > 2 else 'سایر'
-
-            if tx_type == 'expense' and amount:
-                category_totals[category] += amount
+                        pass
+                
+                # تشخیص category (کلمات فارسی خاص)
+                if category is None and tx_type is not None:
+                    persian_cats = ['خوراک', 'حمل', 'قبوض', 'خرید', 'تفریح', 
+                                   'سلامت', 'آموزش', 'سایر', 'حقوق', 'هدیه', 
+                                   'سرمایه', 'پروژه', 'نقل']
+                    if any(cat in field_str for cat in persian_cats):
+                        category = field_str
+            
+            # اگه هنوز پیدا نشده، از ایندکس استفاده کن
+            if len(tx) >= 7:
+                # فرمت: (id, user_id, amount, type, category, desc, date)
+                if amount is None:
+                    try:
+                        amount = int(str(tx[2]).replace(',', ''))
+                    except:
+                        pass
+                if tx_type is None:
+                    tx_type = str(tx[3])
+                if category is None:
+                    category = str(tx[4])
+            elif len(tx) >= 5:
+                # فرمت: (type, amount, category, desc, date) یا مشابه
+                if amount is None:
+                    for field in tx:
+                        try:
+                            num = int(str(field).replace(',', ''))
+                            if num > 1000:
+                                amount = num
+                                break
+                        except:
+                            pass
+                if tx_type is None:
+                    for field in tx:
+                        if str(field) in ['income', 'expense']:
+                            tx_type = str(field)
+                            break
+                if category is None:
+                    category = 'سایر'
+            
+            # ثبت هزینه
+            if tx_type == 'expense' and amount and amount > 0:
+                cat_name = category if category else 'سایر'
+                category_totals[cat_name] += amount
+                print(f"  ✓ هزینه: {amount:,} - {cat_name}")
                 
         except Exception as e:
-            print(f"⚠️ خطا: {e}")
+            print(f"  ✗ خطا در پردازش: {e}")
             continue
 
-    print(f"📊 دسته‌بندی‌ها: {dict(category_totals)}")
+    print(f"📊 جمع دسته‌ها: {dict(category_totals)}")
 
     if not category_totals:
-        print("⚠️ هیچ هزینه‌ای یافت نشد")
+        print("⚠️ هیچ هزینه‌ای پیدا نشد!")
         return None
 
+    # ساخت نمودار
     categories = list(category_totals.keys())
     amounts = list(category_totals.values())
     total = sum(amounts)
@@ -122,13 +149,13 @@ def create_pie_chart(transactions):
     buf.seek(0)
     plt.close(fig)
 
-    print("✅ نمودار دایره‌ای ساخته شد")
+    print("✅ نمودار دایره‌ای آماده!")
     return buf
 
 
 def create_bar_chart(transactions):
     """نمودار میله‌ای درآمد و هزینه"""
-    print(f"📊 create_bar_chart شروع - تعداد: {len(transactions)}")
+    print(f"📊 create_bar_chart - تعداد: {len(transactions)}")
     
     if not transactions:
         return None
@@ -138,40 +165,46 @@ def create_bar_chart(transactions):
 
     for tx in transactions:
         try:
-            # پیدا کردن amount و type
             amount = None
             tx_type = None
             
+            # پیدا کردن فیلدها
             for field in tx:
-                field_str = str(field)
+                field_str = str(field).strip()
                 
-                # پیدا کردن type
                 if field_str in ['income', 'expense']:
                     tx_type = field_str
                 
-                # پیدا کردن amount
                 if amount is None:
                     try:
-                        test_int = int(field)
-                        if test_int > 100:
-                            amount = test_int
+                        num = int(str(field).replace(',', ''))
+                        if num > 1000:
+                            amount = num
                     except:
                         pass
 
-            if tx_type and amount:
+            # اگه پیدا نشد از ایندکس
+            if len(tx) >= 7 and (amount is None or tx_type is None):
+                try:
+                    amount = int(str(tx[2]).replace(',', ''))
+                except:
+                    pass
+                tx_type = str(tx[3])
+
+            if tx_type and amount and amount > 0:
                 if tx_type == 'income':
                     total_income += amount
                 elif tx_type == 'expense':
                     total_expense += amount
                 
         except Exception as e:
-            print(f"⚠️ خطا: {e}")
+            print(f"  ✗ خطا: {e}")
             continue
 
-    print(f"📊 درآمد: {total_income}, هزینه: {total_expense}")
+    print(f"📊 درآمد: {total_income:,}, هزینه: {total_expense:,}")
 
     if total_income == 0 and total_expense == 0:
-        print("⚠️ داده‌ای برای نمودار نیست")
+        print("⚠️ داده‌ای نیست!")
         return None
 
     fig, ax = plt.subplots(figsize=(8, 6), facecolor='white')
@@ -207,10 +240,5 @@ def create_bar_chart(transactions):
     buf.seek(0)
     plt.close(fig)
 
-    print("✅ نمودار میله‌ای ساخته شد")
+    print("✅ نمودار میله‌ای آماده!")
     return buf
-
-
-# Alias برای سازگاری
-create_expense_pie_chart = create_pie_chart
-create_income_expense_chart = create_bar_chart
