@@ -81,6 +81,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("⚙️ مدیریت", callback_data="manage"),
         ],
     ]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(welcome, parse_mode='Markdown', reply_markup=reply_markup)
 
@@ -109,9 +110,28 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بازگشت به منوی اصلی"""
     query = update.callback_query
     await query.answer()
+
     user = update.effective_user
+
+    welcome = f"""
+سلام **{user.first_name}**! 👋
+
+به **ربات مدیریت مالی** خوش اومدی! 💰
+
+✨ **امکانات:**
+├ 📱 ثبت خودکار از پیامک بانک
+├ ➕ ثبت دستی درآمد/هزینه
+├ 💵 مشاهده موجودی
+├ 📋 لیست تراکنش‌ها
+├ 📊 نمودار هزینه‌ها
+└ ⚙️ پنل مدیریت
+
+📲 **برای ثبت خودکار:**
+پیام بانک رو مستقیم فوروارد کن!
+"""
 
     keyboard = [
         [
@@ -130,12 +150,10 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("⚙️ مدیریت", callback_data="manage"),
         ],
     ]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(
-        f"🏠 **منوی اصلی**\n\nسلام {user.first_name}! از منوی زیر استفاده کن:",
-        parse_mode='Markdown',
-        reply_markup=reply_markup
-    )
+
+    await query.edit_message_text(welcome, parse_mode='Markdown', reply_markup=reply_markup)
 
 # ================== موجودی ==================
 
