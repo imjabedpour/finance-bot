@@ -328,12 +328,24 @@ async def all_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================== نمودار ==================
 
 async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش نمودار"""
+    """نمایش نمودار ماهانه"""
     user_id = update.effective_user.id
 
-    await update.message.reply_text("📊 در حال ساخت نمودار...")
+    if update.callback_query:
+        await update.callback_query.answer()
+        msg = await update.callback_query.edit_message_text("📊 در حال ساخت نمودار ماهانه...")
+    else:
+        msg = await update.message.reply_text("📊 در حال ساخت نمودار ماهانه...")
 
     try:
+        import jdatetime
+        now = jdatetime.datetime.now()
+        
+        # الگوی ماه جاری
+        month_pattern = f"{now.year}/{now.month:02d}/%"
+        month_pattern2 = f"{now.year}/{now.month}/%"
+        month_name = f"{now.year}/{now.month:02d}"
+
         db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -341,40 +353,58 @@ async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute('''
             SELECT id, user_id, amount, type, category, description, date
             FROM transactions
-            WHERE user_id = ?
+            WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
             ORDER BY date DESC
-        ''', (user_id,))
+        ''', (user_id, month_pattern, month_pattern2))
 
-        transactions_list = cursor.fetchall()
+        month_transactions = cursor.fetchall()
         conn.close()
 
-        if not transactions_list:
-            await update.message.reply_text("❌ هنوز تراکنشی ثبت نشده!")
+        print(f"📊 تراکنش‌های ماه {month_name}: {len(month_transactions)}")
+
+        if not month_transactions:
+            await msg.edit_text(f"❌ تراکنشی برای ماه {month_name} ثبت نشده!")
             return
 
+        charts_sent = False
+
         # نمودار دایره‌ای
-        pie_chart = create_pie_chart(transactions_list)
-        if pie_chart:
-            await update.message.reply_photo(
-                photo=pie_chart,
-                caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی"
-            )
+        try:
+            from charts import create_pie_chart, create_bar_chart
+            
+            pie_chart = create_pie_chart(month_transactions)
+            if pie_chart:
+                await update.effective_chat.send_photo(
+                    photo=pie_chart,
+                    caption=f"📊 نمودار هزینه‌ها - ماه {month_name}"
+                )
+                charts_sent = True
+        except Exception as e:
+            print(f"❌ خطا در نمودار دایره‌ای: {e}")
 
         # نمودار میله‌ای
-        bar_chart = create_bar_chart(transactions_list)
-        if bar_chart:
-            await update.message.reply_photo(
-                photo=bar_chart,
-                caption="📈 مقایسه درآمد و هزینه"
-            )
+        try:
+            bar_chart = create_bar_chart(month_transactions)
+            if bar_chart:
+                await update.effective_chat.send_photo(
+                    photo=bar_chart,
+                    caption=f"📈 درآمد و هزینه - ماه {month_name}"
+                )
+                charts_sent = True
+        except Exception as e:
+            print(f"❌ خطا در نمودار میله‌ای: {e}")
 
-        if not pie_chart and not bar_chart:
-            await update.message.reply_text("❌ داده‌ای برای نمودار نیست.")
+        if charts_sent:
+            try:
+                await msg.delete()
+            except:
+                pass
+        else:
+            await msg.edit_text("❌ داده‌ای برای نمودار نیست.")
 
     except Exception as e:
-        print(f"❌ خطا: {e}")
-        await update.message.reply_text(f"❌ خطا: {e}")
-
+        print(f"❌ خطای کلی: {e}")
+        await msg.edit_text(f"❌ خطا: {e}")
 
 
 # ================== پردازش SMS بانکی ==================
@@ -1603,65 +1633,67 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================== کالبک نمودار ==================
 
 async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش نمودار امروز"""
+    """نمایش نمودار ماهانه"""
     query = update.callback_query
     await query.answer()
     
     user_id = update.effective_user.id
     
-    await query.edit_message_text("📊 در حال ساخت نمودار...")
+    await query.edit_message_text("📊 در حال ساخت نمودار ماهانه...")
     
     try:
         import jdatetime
-        today = jdatetime.datetime.now()
+        now = jdatetime.datetime.now()
         
-        # دو فرمت تاریخ برای سازگاری
-        date_pattern1 = today.strftime('%Y/%m/%d')  # با صفر: 1404/09/18
-        date_pattern2 = f"{today.year}/{today.month}/{today.day}"  # بدون صفر: 1404/9/18
+        # الگوی ماه جاری: 1404/09/%
+        month_pattern = f"{now.year}/{now.month:02d}/%"
+        month_pattern2 = f"{now.year}/{now.month}/%"  # بدون صفر
+        
+        month_name = f"{now.year}/{now.month:02d}"
+        
+        print(f"📅 جستجوی ماه: {month_pattern}")
         
         db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # فقط تراکنش‌های امروز
+        # تراکنش‌های این ماه
         cursor.execute('''
             SELECT id, user_id, amount, type, category, description, date
             FROM transactions
             WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
             ORDER BY date DESC
-        ''', (user_id, f'{date_pattern1}%', f'{date_pattern2}%'))
+        ''', (user_id, month_pattern, month_pattern2))
         
-        transactions_list = cursor.fetchall()
+        month_transactions = cursor.fetchall()
         conn.close()
         
-        print(f"📊 تراکنش‌های امروز: {len(transactions_list)}")
-        for tx in transactions_list:
-            print(f"  → {tx}")
+        print(f"📊 تراکنش‌های ماه {month_name}: {len(month_transactions)}")
         
-        if not transactions_list:
-            await query.message.reply_text("❌ تراکنشی برای امروز ثبت نشده!")
+        if not month_transactions:
+            await query.message.reply_text(f"❌ تراکنشی برای ماه {month_name} ثبت نشده!")
             return
         
-        # نمودار دایره‌ای
         from charts import create_pie_chart, create_bar_chart
         
-        pie_chart = create_pie_chart(transactions_list)
+        # نمودار دایره‌ای
+        pie_chart = create_pie_chart(month_transactions)
         if pie_chart:
             await query.message.reply_photo(
                 photo=pie_chart,
-                caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی (امروز)"
+                caption=f"📊 نمودار هزینه‌ها - ماه {month_name}"
             )
         
         # نمودار میله‌ای
-        bar_chart = create_bar_chart(transactions_list)
+        bar_chart = create_bar_chart(month_transactions)
         if bar_chart:
             await query.message.reply_photo(
                 photo=bar_chart,
-                caption="📈 مقایسه درآمد و هزینه (امروز)"
+                caption=f"📈 درآمد و هزینه - ماه {month_name}"
             )
         
         if not pie_chart and not bar_chart:
-            await query.message.reply_text("❌ داده‌ای برای نمودار وجود ندارد.")
+            await query.message.reply_text("❌ داده‌ای برای نمودار نیست.")
             
     except Exception as e:
         print(f"❌ خطا: {e}")
