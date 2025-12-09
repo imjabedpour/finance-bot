@@ -100,6 +100,9 @@ def get_user_balance(user_id):
     
     conn.close()
     return {'income': total_income, 'expense': total_expense, 'balance': total_income - total_expense}
+# ⭐ Alias برای سازگاری با bot.py
+create_tables = init_db
+get_balance = get_user_balance
 
 # اجرای اولیه
 init_db()
