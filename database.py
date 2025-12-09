@@ -5,10 +5,8 @@ import jdatetime
 
 def get_db_path():
     """مسیر دیتابیس"""
-    # اگر پوشه data وجود داره (Railway Volume)
     if os.path.exists('/app/data'):
         return '/app/data/financial_bot.db'
-    # مسیر محلی
     return 'financial_bot.db'
 
 def get_connection():
@@ -46,6 +44,9 @@ def init_db():
     conn.commit()
     conn.close()
     print(f"✅ Database initialized at: {get_db_path()}")
+
+# ⭐ Alias برای سازگاری با bot.py
+create_tables = init_db
 
 def add_user(user_id, username, first_name):
     """اضافه کردن کاربر جدید"""
