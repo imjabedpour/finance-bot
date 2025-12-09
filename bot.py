@@ -26,6 +26,13 @@ from charts import create_pie_chart, create_bar_chart
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+def get_db_path():
+    if os.path.exists('/app/data'):
+        return '/app/data/financial_bot.db'
+    return 'financial_bot.db'
+
+DB_PATH = get_db_path()
+
 # مراحل مکالمه
 AMOUNT, CATEGORY, DESCRIPTION = range(3)
 
@@ -257,7 +264,7 @@ async def all_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     page = int(query.data.replace("all_transactions_", ""))
     per_page = 10  # تعداد در هر صفحه
 
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # گرفتن تعداد کل تراکنش‌ها
@@ -320,6 +327,8 @@ async def all_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================== نمودار ==================
 
+# ================== نمودار ==================
+
 async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش نمودار هزینه‌ها"""
     user_id = update.effective_user.id
@@ -330,43 +339,70 @@ async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         msg = await update.message.reply_text("📊 در حال ساخت نمودار...")
 
-    conn = sqlite3.connect('financial_bot.db')
-    cursor = conn.cursor()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-    cursor.execute('''
-        SELECT id, user_id, amount, type, category, description, date
-        FROM transactions
-        WHERE user_id = ?
-        ORDER BY date DESC
-    ''', (user_id,))
+        cursor.execute('''
+            SELECT id, user_id, amount, type, category, description, date
+            FROM transactions
+            WHERE user_id = ?
+            ORDER BY date DESC
+        ''', (user_id,))
 
-    transactions_list = cursor.fetchall()
-    conn.close()
+        transactions_list = cursor.fetchall()
+        conn.close()
 
-    if not transactions_list:
-        await msg.edit_text("❌ هنوز تراکنشی ثبت نشده!")
-        return
+        if not transactions_list:
+            await msg.edit_text("❌ هنوز تراکنشی ثبت نشده!")
+            return
 
-    # ساخت نمودار دایره‌ای
-    pie_chart = create_pie_chart(transactions_list)
-    if pie_chart:
-        await update.effective_chat.send_photo(
-            photo=pie_chart,
-            caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی"
-        )
+        # دیباگ: نمایش تعداد تراکنش‌ها
+        print(f"📊 تعداد تراکنش‌ها: {len(transactions_list)}")
+        print(f"📊 نمونه تراکنش: {transactions_list[0] if transactions_list else 'خالی'}")
 
-    # ساخت نمودار میله‌ای
-    bar_chart = create_bar_chart(transactions_list)
-    if bar_chart:
-        await update.effective_chat.send_photo(
-            photo=bar_chart,
-            caption="📈 مقایسه درآمد و هزینه"
-        )
+        charts_sent = False
 
-    if not pie_chart and not bar_chart:
-        await msg.edit_text("❌ داده‌ای برای نمایش نمودار وجود ندارد.")
-    else:
-        await msg.delete()
+        # ساخت نمودار دایره‌ای
+        try:
+            from charts import create_pie_chart
+            pie_chart = create_pie_chart(transactions_list)
+            if pie_chart:
+                await update.effective_chat.send_photo(
+                    photo=pie_chart,
+                    caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی"
+                )
+                charts_sent = True
+                print("✅ نمودار دایره‌ای ارسال شد")
+            else:
+                print("⚠️ نمودار دایره‌ای None برگشت (احتمالاً هزینه‌ای نیست)")
+        except Exception as e:
+            print(f"❌ خطا در نمودار دایره‌ای: {e}")
+
+        # ساخت نمودار میله‌ای
+        try:
+            from charts import create_bar_chart
+            bar_chart = create_bar_chart(transactions_list)
+            if bar_chart:
+                await update.effective_chat.send_photo(
+                    photo=bar_chart,
+                    caption="📈 مقایسه درآمد و هزینه"
+                )
+                charts_sent = True
+                print("✅ نمودار میله‌ای ارسال شد")
+            else:
+                print("⚠️ نمودار میله‌ای None برگشت")
+        except Exception as e:
+            print(f"❌ خطا در نمودار میله‌ای: {e}")
+
+        if charts_sent:
+            await msg.delete()
+        else:
+            await msg.edit_text("❌ داده‌ای برای نمایش نمودار وجود ندارد.\n\n(فقط هزینه‌ها در نمودار دایره‌ای نمایش داده میشن)")
+
+    except Exception as e:
+        print(f"❌ خطای کلی در chart: {e}")
+        await msg.edit_text(f"❌ خطا در ساخت نمودار:\n`{str(e)[:100]}`", parse_mode='Markdown')
 
 
 async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -892,7 +928,7 @@ async def manage_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     # گرفتن تراکنش‌ها با id
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, amount, type, category, description, date
@@ -943,7 +979,7 @@ async def edit_transaction_start(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data['edit_id'] = t_id
 
     # گرفتن اطلاعات تراکنش
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT amount, type, category, description, date
@@ -1012,7 +1048,7 @@ async def edit_field_category(update: Update, context: ContextTypes.DEFAULT_TYPE
     t_id = context.user_data.get('edit_id')
 
     # گرفتن نوع تراکنش
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT type FROM transactions WHERE id = ?', (t_id,))
     result = cursor.fetchone()
@@ -1087,7 +1123,7 @@ async def edit_amount_received(update: Update, context: ContextTypes.DEFAULT_TYP
         t_id = context.user_data.get('edit_id')
 
         # آپدیت در دیتابیس
-        conn = sqlite3.connect('financial_bot.db')
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('UPDATE transactions SET amount = ? WHERE id = ?', (amount, t_id))
         conn.commit()
@@ -1118,7 +1154,7 @@ async def edit_category_selected(update: Update, context: ContextTypes.DEFAULT_T
     t_id = context.user_data.get('edit_id')
 
     # آپدیت در دیتابیس
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('UPDATE transactions SET category = ? WHERE id = ?', (category, t_id))
     conn.commit()
@@ -1140,7 +1176,7 @@ async def edit_desc_received(update: Update, context: ContextTypes.DEFAULT_TYPE)
     t_id = context.user_data.get('edit_id')
 
     # آپدیت در دیتابیس
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('UPDATE transactions SET description = ? WHERE id = ?', (description, t_id))
     conn.commit()
@@ -1163,7 +1199,7 @@ async def edit_skip_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     # آپدیت با توضیحات خالی
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('UPDATE transactions SET description = ? WHERE id = ?', ('', t_id))
     conn.commit()
@@ -1193,7 +1229,7 @@ async def edit_skip_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     t_id = context.user_data.get('edit_id')
 
     # آپدیت در دیتابیس
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('UPDATE transactions SET description = ? WHERE id = ?', ('', t_id))
     conn.commit()
@@ -1224,7 +1260,7 @@ async def delete_transaction_start(update: Update, context: ContextTypes.DEFAULT
     context.user_data['delete_id'] = t_id
 
     # گرفتن اطلاعات تراکنش
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT amount, type, category, date
@@ -1275,7 +1311,7 @@ async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # حذف از دیتابیس
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM transactions WHERE id = ?', (t_id,))
     conn.commit()
@@ -1327,7 +1363,7 @@ async def confirm_delete_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id
 
     # حذف همه تراکنش‌های کاربر
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM transactions WHERE user_id = ?', (user_id,))
     deleted_count = cursor.rowcount
@@ -1507,7 +1543,7 @@ async def search_text_received(update: Update, context: ContextTypes.DEFAULT_TYP
     search_text = update.message.text
     user_id = update.effective_user.id
 
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, amount, type, category, description, date
@@ -1608,7 +1644,7 @@ async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("📊 در حال ساخت نمودار...")
 
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -1669,7 +1705,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ شما اجازه دسترسی ندارید!")
         return
     
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     # تعداد کاربران
@@ -1720,7 +1756,7 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⛔ دسترسی ندارید!")
         return
     
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -1796,7 +1832,7 @@ async def admin_show_user_transactions(update: Update, context: ContextTypes.DEF
         await update.message.reply_text("❌ آیدی باید عدد باشه!")
         return True
     
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     # اطلاعات کاربر
@@ -1862,7 +1898,7 @@ async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⛔ دسترسی ندارید!")
         return
     
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute('SELECT COUNT(DISTINCT user_id) FROM users')
@@ -1913,7 +1949,7 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pattern2 = f"{now.year}/{now.month:02d}/{now.day:02d}%"  # 1404/09/18%
     today_display = f"{now.year}/{now.month:02d}/{now.day:02d}"
 
-    conn = sqlite3.connect('/app/data/financial_bot.db') if os.path.exists('/app/data') else sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect('/app/data/financial_bot.db') if os.path.exists('/app/data') else sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # درآمد امروز (هر دو الگو)
@@ -2100,7 +2136,7 @@ async def send_nightly_report_to_admin(context: ContextTypes.DEFAULT_TYPE):
     
     ADMIN_ID = 5669469598  # آیدی تو
     
-    conn = sqlite3.connect('financial_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     now = jdatetime.datetime.now()
