@@ -327,8 +327,6 @@ async def all_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================== نمودار ==================
 
-# ================== نمودار ==================
-
 async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش نمودار هزینه‌ها"""
     user_id = update.effective_user.id
@@ -353,19 +351,17 @@ async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         transactions_list = cursor.fetchall()
         conn.close()
 
+        print(f"📊 تعداد تراکنش‌ها: {len(transactions_list)}")
+
         if not transactions_list:
             await msg.edit_text("❌ هنوز تراکنشی ثبت نشده!")
             return
 
-        # دیباگ: نمایش تعداد تراکنش‌ها
-        print(f"📊 تعداد تراکنش‌ها: {len(transactions_list)}")
-        print(f"📊 نمونه تراکنش: {transactions_list[0] if transactions_list else 'خالی'}")
-
         charts_sent = False
 
-        # ساخت نمودار دایره‌ای
+        # نمودار دایره‌ای
         try:
-            from charts import create_pie_chart
+            print("🔄 شروع ساخت نمودار دایره‌ای...")
             pie_chart = create_pie_chart(transactions_list)
             if pie_chart:
                 await update.effective_chat.send_photo(
@@ -375,13 +371,15 @@ async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 charts_sent = True
                 print("✅ نمودار دایره‌ای ارسال شد")
             else:
-                print("⚠️ نمودار دایره‌ای None برگشت (احتمالاً هزینه‌ای نیست)")
+                print("⚠️ نمودار دایره‌ای None برگشت")
         except Exception as e:
             print(f"❌ خطا در نمودار دایره‌ای: {e}")
+            import traceback
+            traceback.print_exc()
 
-        # ساخت نمودار میله‌ای
+        # نمودار میله‌ای
         try:
-            from charts import create_bar_chart
+            print("🔄 شروع ساخت نمودار میله‌ای...")
             bar_chart = create_bar_chart(transactions_list)
             if bar_chart:
                 await update.effective_chat.send_photo(
@@ -394,15 +392,22 @@ async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print("⚠️ نمودار میله‌ای None برگشت")
         except Exception as e:
             print(f"❌ خطا در نمودار میله‌ای: {e}")
+            import traceback
+            traceback.print_exc()
 
         if charts_sent:
-            await msg.delete()
+            try:
+                await msg.delete()
+            except:
+                pass
         else:
-            await msg.edit_text("❌ داده‌ای برای نمایش نمودار وجود ندارد.\n\n(فقط هزینه‌ها در نمودار دایره‌ای نمایش داده میشن)")
+            await msg.edit_text("❌ داده‌ای برای نمایش نمودار وجود ندارد.\n\n💡 فقط هزینه‌ها در نمودار دایره‌ای نمایش داده میشن.")
 
     except Exception as e:
-        print(f"❌ خطای کلی در chart: {e}")
-        await msg.edit_text(f"❌ خطا در ساخت نمودار:\n`{str(e)[:100]}`", parse_mode='Markdown')
+        print(f"❌ خطای کلی: {e}")
+        import traceback
+        traceback.print_exc()
+        await msg.edit_text(f"❌ خطا در ساخت نمودار:\n`{str(e)[:200]}`", parse_mode='Markdown')
 
 
 async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
