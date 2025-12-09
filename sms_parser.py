@@ -19,31 +19,50 @@ def parse_bank_sms(text):
     translation_table = str.maketrans(persian_digits, english_digits)
     text = text.translate(translation_table)
     
-    # حذف کاراکترهای خاص یونیکد (مثل ‪ و ‬)
+    # حذف کاراکترهای خاص یونیکد
     text = re.sub(r'[\u200e\u200f\u202a\u202b\u202c\u202d\u202e]', '', text)
     
-    # ===== تشخیص نوع تراکنش از کلمات کلیدی (اول!) =====
+    # ===== تشخیص بانک =====
     
-    expense_keywords = ['برداشت', 'خرید', 'کارت به کارت', 'پرداخت', 'کسر', 'خریدکالا', 'انتقال از']
-    income_keywords = ['واریز', 'وصول', 'دریافت', 'حقوق', 'انتقال به', 'واریزی']
+    banks = {
+        'سامان': 'سامان', 'ملت': 'ملت', 'ملی': 'ملی',
+        'صادرات': 'صادرات', 'تجارت': 'تجارت', 'سپه': 'سپه',
+        'پاسارگاد': 'پاسارگاد', 'پارسیان': 'پارسیان',
+        'رسالت': 'رسالت', 'شهر': 'شهر', 'آینده': 'آینده',
+        'مسکن': 'مسکن', 'کشاورزی': 'کشاورزی', 'رفاه': 'رفاه',
+        'بلو': 'بلوبانک', 'بلوبانک': 'بلوبانک', 'blubank': 'بلوبانک',
+        'اقتصادنوین': 'اقتصادنوین', 'سینا': 'سینا',
+    }
     
     text_lower = text.lower()
+    for bank_name in banks:
+        if bank_name in text or bank_name in text_lower:
+            result['bank'] = banks[bank_name]
+            break
+    
+    # ===== تشخیص نوع تراکنش =====
+    
+    expense_keywords = ['برداشت', 'خرید', 'کارت به کارت', 'پرداخت', 'کسر', 
+                        'خریدکالا', 'انتقال از', 'پرید', 'کم شد', 'خارج شد']
+    income_keywords = ['واریز', 'وصول', 'دریافت', 'حقوق', 'انتقال به', 
+                       'واریزی', 'اضافه شد', 'افزایش']
     
     for keyword in expense_keywords:
         if keyword in text:
             result['type'] = 'expense'
             break
     
-    for keyword in income_keywords:
-        if keyword in text:
-            result['type'] = 'income'
-            break
+    if result['type'] is None:
+        for keyword in income_keywords:
+            if keyword in text:
+                result['type'] = 'income'
+                break
     
-    # ===== استخراج مانده (اول مانده رو پیدا کن تا با مبلغ اشتباه نشه) =====
+    # ===== استخراج مانده =====
     
     balance_patterns = [
-        r'مانده[:\s]*([۰-۹0-9,،]+)',
-        r'موجودی[:\s]*([۰-۹0-9,،]+)',
+        r'موجودی[:\s]*([0-9,،]+)\s*(?:ریال|تومان)?',
+        r'مانده[:\s]*([0-9,،]+)',
     ]
     
     for pattern in balance_patterns:
@@ -56,62 +75,57 @@ def parse_bank_sms(text):
             except:
                 continue
     
-    # ===== استخراج مبلغ =====
+    # ===== استخراج مبلغ - روش‌های مختلف =====
     
-    # خطوط رو جدا کن
-    lines = text.strip().split('\n')
+    # روش ۱: بلوبانک - "3,590,000 ریال از حساب"
+    blubank_pattern = r'([0-9,،]+)\s*ریال\s*(?:از\s*حساب|به\s*حساب)'
+    match = re.search(blubank_pattern, text)
+    if match:
+        try:
+            amount_str = match.group(1).replace(',', '').replace('،', '')
+            amount = int(amount_str)
+            if amount >= 1000 and amount != result['balance']:
+                result['amount'] = amount
+        except:
+            pass
     
-    for line in lines:
-        line = line.strip()
-        
-        # اگه خط با مانده یا موجودی شروع میشه، رد کن
-        if 'مانده' in line or 'موجودی' in line:
-            continue
-        
-        # اگه خط شامل شماره حساب/کارت هست (مثل 101-1-6220704-1)، رد کن
-        if re.match(r'^.*:\s*[\d\-]+$', line) and '-' in line and line.count('-') >= 2:
-            continue
-        
-        # الگوی مبلغ با علامت + یا - در ابتدای خط
-        amount_match = re.match(r'^([+\-])\s*([۰-۹0-9,،]+)\s*$', line)
-        if amount_match:
-            sign = amount_match.group(1)
-            amount_str = amount_match.group(2).replace(',', '').replace('،', '')
-            try:
-                amount = int(amount_str)
-                if amount >= 1000:  # حداقل ۱۰۰۰ ریال
-                    result['amount'] = amount
-                    # اگه نوع هنوز مشخص نشده، از علامت استفاده کن
-                    if result['type'] is None:
-                        result['type'] = 'income' if sign == '+' else 'expense'
-                    break
-            except:
-                continue
-    
-    # اگه هنوز مبلغ پیدا نشده، الگوهای دیگه رو چک کن
+    # روش ۲: مبلغ با علامت + یا -
     if result['amount'] is None:
-        # حذف خطوط شماره حساب
-        clean_text = text
-        # حذف خطوطی که شماره حساب دارن
-        clean_text = re.sub(r'(برداشت|واریز)[:\s]*[\d\-]+', '', clean_text)
-        
+        lines = text.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            if 'مانده' in line or 'موجودی' in line:
+                continue
+            if re.match(r'^.*:\s*[\d\-]+$', line) and '-' in line and line.count('-') >= 2:
+                continue
+            
+            amount_match = re.match(r'^([+\-])\s*([0-9,،]+)\s*$', line)
+            if amount_match:
+                sign = amount_match.group(1)
+                amount_str = amount_match.group(2).replace(',', '').replace('،', '')
+                try:
+                    amount = int(amount_str)
+                    if amount >= 1000:
+                        result['amount'] = amount
+                        if result['type'] is None:
+                            result['type'] = 'income' if sign == '+' else 'expense'
+                        break
+                except:
+                    continue
+    
+    # روش ۳: الگوهای عمومی
+    if result['amount'] is None:
         amount_patterns = [
-            # مبلغ با کلمه "مبلغ"
-            r'مبلغ[:\s]*([۰-۹0-9,،]+)',
-            # عدد بزرگ تنها در یک خط (بدون شماره حساب)
-            r'^[+\-]?\s*([۰-۹0-9]{1,3}(?:[,،][۰-۹0-9]{3})+)\s*$',
-            # عدد ۶ رقمی یا بیشتر
-            r'(?<![۰-۹0-9\-])([۰-۹0-9]{6,})(?![۰-۹0-9\-])',
+            r'مبلغ[:\s]*([0-9,،]+)',
+            r'([0-9]{1,3}(?:[,،][0-9]{3})+)\s*(?:ریال|تومان)',
         ]
         
         for pattern in amount_patterns:
-            matches = re.findall(pattern, clean_text, re.MULTILINE)
+            matches = re.findall(pattern, text)
             for match in matches:
                 try:
                     amount_str = match.replace(',', '').replace('،', '')
                     amount = int(amount_str)
-                    # مبلغ باید بین ۱۰۰۰ ریال و ۱۰۰ میلیارد ریال باشه
-                    # و نباید برابر مانده باشه
                     if 1000 <= amount <= 100000000000:
                         if result['balance'] is None or amount != result['balance']:
                             result['amount'] = amount
@@ -120,21 +134,6 @@ def parse_bank_sms(text):
                     continue
             if result['amount']:
                 break
-    
-    # ===== تشخیص بانک =====
-    
-    banks = {
-        'سامان': 'سامان', 'ملت': 'ملت', 'ملی': 'ملی',
-        'صادرات': 'صادرات', 'تجارت': 'تجارت', 'سپه': 'سپه',
-        'پاسارگاد': 'پاسارگاد', 'پارسیان': 'پارسیان',
-        'رسالت': 'رسالت', 'شهر': 'شهر', 'آینده': 'آینده',
-        'مسکن': 'مسکن', 'کشاورزی': 'کشاورزی', 'رفاه': 'رفاه',
-    }
-    
-    for bank_name in banks:
-        if bank_name in text:
-            result['bank'] = banks[bank_name]
-            break
     
     # ===== دسته‌بندی پیش‌فرض =====
     
