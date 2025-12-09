@@ -1884,33 +1884,37 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     # تاریخ امروز شمسی
-    today = jdatetime.datetime.now().strftime('%Y/%m/%d')
+    # هر دو فرمت رو چک کن
+    now = jdatetime.datetime.now()
+    today_formatted = now.strftime('%Y/%m/%d')  # 1404/09/18
+    today_simple = f"{now.year}/{now.month}/{now.day}"  # 1404/9/18
+
     
     conn = sqlite3.connect('financial_bot.db')
     cursor = conn.cursor()
     
-    # درآمد امروز
+   # درآمد امروز
     cursor.execute('''
-        SELECT COALESCE(SUM(amount), 0)
-        FROM transactions
-        WHERE user_id = ? AND type = 'income' AND date = ?
-    ''', (user_id, today))
+    SELECT COALESCE(SUM(amount), 0)
+    FROM transactions
+    WHERE user_id = ? AND type = 'income' AND (date = ? OR date = ?)
+''', (user_id, today_formatted, today_simple))
     today_income = cursor.fetchone()[0]
-    
-    # هزینه امروز
+
+# هزینه امروز
     cursor.execute('''
-        SELECT COALESCE(SUM(amount), 0)
-        FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND date = ?
-    ''', (user_id, today))
+    SELECT COALESCE(SUM(amount), 0)
+    FROM transactions
+    WHERE user_id = ? AND type = 'expense' AND (date = ? OR date = ?)
+''', (user_id, today_formatted, today_simple))
     today_expense = cursor.fetchone()[0]
-    
-    # تعداد تراکنش‌های امروز
+
+# تعداد تراکنش‌های امروز
     cursor.execute('''
-        SELECT COUNT(*)
-        FROM transactions
-        WHERE user_id = ? AND date = ?
-    ''', (user_id, today))
+    SELECT COUNT(*)
+    FROM transactions
+    WHERE user_id = ? AND (date = ? OR date = ?)
+''', (user_id, today_formatted, today_simple))
     today_count = cursor.fetchone()[0]
     
     # لیست هزینه‌های امروز با دسته‌بندی
