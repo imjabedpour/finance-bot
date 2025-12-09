@@ -328,17 +328,14 @@ async def all_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================== نمودار ==================
 
 async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش نمودار هزینه‌ها"""
+    """نمایش نمودار"""
     user_id = update.effective_user.id
 
-    if update.callback_query:
-        await update.callback_query.answer()
-        msg = await update.callback_query.edit_message_text("📊 در حال ساخت نمودار...")
-    else:
-        msg = await update.message.reply_text("📊 در حال ساخت نمودار...")
+    await update.message.reply_text("📊 در حال ساخت نمودار...")
 
     try:
-        conn = sqlite3.connect(DB_PATH)
+        db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
         cursor.execute('''
@@ -351,68 +348,33 @@ async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         transactions_list = cursor.fetchall()
         conn.close()
 
-        print(f"📊 تعداد تراکنش‌ها: {len(transactions_list)}")
-
         if not transactions_list:
-            await msg.edit_text("❌ هنوز تراکنشی ثبت نشده!")
+            await update.message.reply_text("❌ هنوز تراکنشی ثبت نشده!")
             return
 
-        charts_sent = False
-
         # نمودار دایره‌ای
-        try:
-            print("🔄 شروع ساخت نمودار دایره‌ای...")
-            pie_chart = create_pie_chart(transactions_list)
-            if pie_chart:
-                await update.effective_chat.send_photo(
-                    photo=pie_chart,
-                    caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی"
-                )
-                charts_sent = True
-                print("✅ نمودار دایره‌ای ارسال شد")
-            else:
-                print("⚠️ نمودار دایره‌ای None برگشت")
-        except Exception as e:
-            print(f"❌ خطا در نمودار دایره‌ای: {e}")
-            import traceback
-            traceback.print_exc()
+        pie_chart = create_pie_chart(transactions_list)
+        if pie_chart:
+            await update.message.reply_photo(
+                photo=pie_chart,
+                caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی"
+            )
 
         # نمودار میله‌ای
-        try:
-            print("🔄 شروع ساخت نمودار میله‌ای...")
-            bar_chart = create_bar_chart(transactions_list)
-            if bar_chart:
-                await update.effective_chat.send_photo(
-                    photo=bar_chart,
-                    caption="📈 مقایسه درآمد و هزینه"
-                )
-                charts_sent = True
-                print("✅ نمودار میله‌ای ارسال شد")
-            else:
-                print("⚠️ نمودار میله‌ای None برگشت")
-        except Exception as e:
-            print(f"❌ خطا در نمودار میله‌ای: {e}")
-            import traceback
-            traceback.print_exc()
+        bar_chart = create_bar_chart(transactions_list)
+        if bar_chart:
+            await update.message.reply_photo(
+                photo=bar_chart,
+                caption="📈 مقایسه درآمد و هزینه"
+            )
 
-        if charts_sent:
-            try:
-                await msg.delete()
-            except:
-                pass
-        else:
-            await msg.edit_text("❌ داده‌ای برای نمایش نمودار وجود ندارد.\n\n💡 فقط هزینه‌ها در نمودار دایره‌ای نمایش داده میشن.")
+        if not pie_chart and not bar_chart:
+            await update.message.reply_text("❌ داده‌ای برای نمودار نیست.")
 
     except Exception as e:
-        print(f"❌ خطای کلی: {e}")
-        import traceback
-        traceback.print_exc()
-        await msg.edit_text(f"❌ خطا در ساخت نمودار:\n`{str(e)[:200]}`", parse_mode='Markdown')
+        print(f"❌ خطا: {e}")
+        await update.message.reply_text(f"❌ خطا: {e}")
 
-
-async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """کالبک نمودار از دکمه"""
-    await chart(update, context)
 
 
 # ================== پردازش SMS بانکی ==================
@@ -1649,45 +1611,50 @@ async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("📊 در حال ساخت نمودار...")
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    try:
+        # اتصال به دیتابیس
+        db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
 
-    cursor.execute('''
-        SELECT type, amount, category, description, date
-        FROM transactions
-        WHERE user_id = ?
-        ORDER BY date DESC
-    ''', (user_id,))
+        cursor.execute('''
+            SELECT id, user_id, amount, type, category, description, date
+            FROM transactions
+            WHERE user_id = ?
+            ORDER BY date DESC
+        ''', (user_id,))
 
-    transactions_list = cursor.fetchall()
-    conn.close()
+        transactions_list = cursor.fetchall()
+        conn.close()
 
-    if not transactions_list:
-        await query.message.reply_text("❌ هنوز تراکنشی ثبت نشده!")
-        return
+        if not transactions_list:
+            await query.message.reply_text("❌ هنوز تراکنشی ثبت نشده!")
+            return
 
-    # ساخت نمودار دایره‌ای
-    pie_chart = create_pie_chart(transactions_list)
+        # ساخت نمودار دایره‌ای
+        pie_chart = create_pie_chart(transactions_list)
 
-    if pie_chart:
-        await query.message.reply_photo(
-            photo=open(pie_chart, 'rb'),
-            caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی"
-        )
-        os.remove(pie_chart)
+        if pie_chart:
+            await query.message.reply_photo(
+                photo=pie_chart,  # ✅ مستقیم BytesIO
+                caption="📊 نمودار هزینه‌ها بر اساس دسته‌بندی"
+            )
 
-    # ساخت نمودار میله‌ای
-    bar_chart = create_bar_chart(transactions_list)
+        # ساخت نمودار میله‌ای
+        bar_chart = create_bar_chart(transactions_list)
 
-    if bar_chart:
-        await query.message.reply_photo(
-            photo=open(bar_chart, 'rb'),
-            caption="📈 مقایسه درآمد و هزینه"
-        )
-        os.remove(bar_chart)
+        if bar_chart:
+            await query.message.reply_photo(
+                photo=bar_chart,  # ✅ مستقیم BytesIO
+                caption="📈 مقایسه درآمد و هزینه"
+            )
 
-    if not pie_chart and not bar_chart:
-        await query.message.reply_text("❌ داده‌ای برای نمایش نمودار وجود ندارد.")
+        if not pie_chart and not bar_chart:
+            await query.message.reply_text("❌ داده‌ای برای نمایش نمودار وجود ندارد.")
+
+    except Exception as e:
+        print(f"❌ خطا در نمودار: {e}")
+        await query.message.reply_text(f"❌ خطا در ساخت نمودار: {e}")
 
 
 # ================== کالبک مدیریت ==================
