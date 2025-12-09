@@ -1,7 +1,13 @@
 # bot.py - ربات مدیریت مالی با پنل مدیریت کامل
 import os
 import sqlite3
+import datetime
+import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
+
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters, 
     ContextTypes, CallbackQueryHandler, ConversationHandler
@@ -1985,6 +1991,184 @@ async def daily_report_callback(update: Update, context: ContextTypes.DEFAULT_TY
     """کالبک گزارش روزانه"""
     await daily_report(update, context)
 
+# ================== اعلان شبانه ==================
+
+# ================== اعلان شبانه ==================
+
+async def send_nightly_report_to_admin(context: ContextTypes.DEFAULT_TYPE):
+    """ارسال گزارش شبانه به ادمین"""
+    
+    ADMIN_ID = 5669469598  # آیدی تو
+    
+    conn = sqlite3.connect('financial_bot.db')
+    cursor = conn.cursor()
+    
+    now = jdatetime.datetime.now()
+    today_pattern = now.strftime('%Y/%m/%d') + "%"
+    today_display = now.strftime('%Y/%m/%d')
+    
+    # درآمد امروز
+    cursor.execute('''
+        SELECT COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE user_id = ? AND type = 'income' AND date LIKE ?
+    ''', (ADMIN_ID, today_pattern))
+    today_income = cursor.fetchone()[0]
+    
+    # هزینه امروز
+    cursor.execute('''
+        SELECT COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE user_id = ? AND type = 'expense' AND date LIKE ?
+    ''', (ADMIN_ID, today_pattern))
+    today_expense = cursor.fetchone()[0]
+    
+    # تعداد تراکنش‌ها
+    cursor.execute('''
+        SELECT COUNT(*)
+        FROM transactions
+        WHERE user_id = ? AND date LIKE ?
+    ''', (ADMIN_ID, today_pattern))
+    today_count = cursor.fetchone()[0]
+    
+    # تراکنش‌ها
+    cursor.execute('''
+        SELECT amount, type, category, description
+        FROM transactions
+        WHERE user_id = ? AND date LIKE ?
+        ORDER BY id DESC
+        LIMIT 5
+    ''', (ADMIN_ID, today_pattern))
+    today_transactions = cursor.fetchall()
+    
+    conn.close()
+    
+    # ساخت پیام
+    text = f"🌙 **گزارش شبانه** ({today_display})\n\n"
+    
+    if today_count == 0:
+        text += "📭 امروز تراکنشی ثبت نشده!\n"
+    else:
+        text += f"📊 **خلاصه امروز:**\n"
+        text += f"├ 💰 درآمد: **{today_income:,}** ریال\n"
+        text += f"├ 💸 هزینه: **{today_expense:,}** ریال\n"
+        text += f"├ 📈 تراز: **{today_income - today_expense:,}** ریال\n"
+        text += f"└ 📝 تعداد: {today_count} تراکنش\n\n"
+        
+        if today_transactions:
+            text += "📋 **آخرین تراکنش‌ها:**\n"
+            for t in today_transactions:
+                amount, t_type, category, desc = t
+                emoji = "🟢" if t_type == "income" else "🔴"
+                sign = "+" if t_type == "income" else "-"
+                text += f"{emoji} {sign}{amount:,} | {category}\n"
+    
+    text += "\n💤 شب بخیر!"
+    
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=text,
+            parse_mode='Markdown'
+        )
+        print(f"✅ گزارش شبانه ارسال شد")
+    except Exception as e:
+        print(f"❌ خطا: {e}")
+    
+    conn.close()
+
+
+async def send_nightly_report_to_admin(context: ContextTypes.DEFAULT_TYPE):
+    """ارسال گزارش فقط به ادمین (برای تست)"""
+    
+    ADMIN_ID = 5669469598  # آیدی تو
+    
+    conn = sqlite3.connect('financial_bot.db')
+    cursor = conn.cursor()
+    
+    now = jdatetime.datetime.now()
+    today_pattern = now.strftime('%Y/%m/%d') + "%"
+    today_display = now.strftime('%Y/%m/%d')
+    
+    # درآمد امروز
+    cursor.execute('''
+        SELECT COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE user_id = ? AND type = 'income' AND date LIKE ?
+    ''', (ADMIN_ID, today_pattern))
+    today_income = cursor.fetchone()[0]
+    
+    # هزینه امروز
+    cursor.execute('''
+        SELECT COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE user_id = ? AND type = 'expense' AND date LIKE ?
+    ''', (ADMIN_ID, today_pattern))
+    today_expense = cursor.fetchone()[0]
+    
+    # تعداد تراکنش‌ها
+    cursor.execute('''
+        SELECT COUNT(*)
+        FROM transactions
+        WHERE user_id = ? AND date LIKE ?
+    ''', (ADMIN_ID, today_pattern))
+    today_count = cursor.fetchone()[0]
+    
+    # تراکنش‌ها
+    cursor.execute('''
+        SELECT amount, type, category, description
+        FROM transactions
+        WHERE user_id = ? AND date LIKE ?
+        ORDER BY id DESC
+        LIMIT 5
+    ''', (ADMIN_ID, today_pattern))
+    today_transactions = cursor.fetchall()
+    
+    conn.close()
+    
+    # ساخت پیام
+    text = f"🌙 **گزارش شبانه** ({today_display})\n\n"
+    
+    if today_count == 0:
+        text += "📭 امروز تراکنشی ثبت نشده!"
+    else:
+        text += f"📊 **خلاصه امروز:**\n"
+        text += f"├ 💰 درآمد: **{today_income:,}** ریال\n"
+        text += f"├ 💸 هزینه: **{today_expense:,}** ریال\n"
+        text += f"├ 📈 تراز: **{today_income - today_expense:,}** ریال\n"
+        text += f"└ 📝 تعداد: {today_count} تراکنش\n\n"
+        
+        if today_transactions:
+            text += "📋 **آخرین تراکنش‌ها:**\n"
+            for t in today_transactions:
+                amount, t_type, category, desc = t
+                emoji = "🟢" if t_type == "income" else "🔴"
+                sign = "+" if t_type == "income" else "-"
+                text += f"{emoji} {sign}{amount:,} | {category}\n"
+    
+    text += "\n💤 شب بخیر!"
+    
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=text,
+            parse_mode='Markdown'
+        )
+        print(f"✅ گزارش شبانه ارسال شد")
+    except Exception as e:
+        print(f"❌ خطا: {e}")
+
+# ================== تست گزارش شبانه ==================
+
+async def test_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تست دستی گزارش شبانه"""
+    if update.effective_user.id != 5669469598:
+        await update.message.reply_text("⛔ فقط ادمین!")
+        return
+    
+    await update.message.reply_text("⏳ در حال ارسال گزارش تست...")
+    await send_nightly_report_to_admin(context)
+    await update.message.reply_text("✅ گزارش ارسال شد!")
 
 # ================== تابع اصلی ==================
 
@@ -1996,6 +2180,18 @@ def main():
 
     # ساخت اپلیکیشن
     application = Application.builder().token(BOT_TOKEN).build()
+
+    # -------------------- ⏰ زمان‌بندی گزارش شبانه --------------------
+    tehran_tz = pytz.timezone('Asia/Tehran')
+    job_queue = application.job_queue
+    
+    # هر شب ساعت 23:00 به وقت تهران
+    job_queue.run_daily(
+        send_nightly_report_to_admin,
+        time=datetime.time(hour=23, minute=0, second=0, tzinfo=tehran_tz),
+        name="nightly_report"
+    )
+    print("⏰ گزارش شبانه تنظیم شد: هر شب ساعت 23:00")
 
     # -------------------- هندلر ثبت دستی --------------------
     conv_handler = ConversationHandler(
@@ -2025,6 +2221,9 @@ def main():
             CallbackQueryHandler(cancel_transaction_callback, pattern="^cancel_transaction$"),
         ],
     )
+    
+    # ... بقیه کدها همون که هست ادامه بده ...
+
 
     # -------------------- هندلر ویرایش تراکنش --------------------
     edit_conv_handler = ConversationHandler(
@@ -2070,7 +2269,8 @@ def main():
     application.add_handler(CommandHandler("chart", chart))
     application.add_handler(CommandHandler("manage", manage))
     application.add_handler(CommandHandler("admin", admin))
-
+    application.add_handler(CommandHandler("testreport", test_report))
+    application.add_handler(CommandHandler("testreport", test_report))
     # -------------------- هندلرهای مکالمه --------------------
     application.add_handler(conv_handler)
     application.add_handler(edit_conv_handler)
