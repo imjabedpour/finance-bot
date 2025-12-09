@@ -1996,63 +1996,66 @@ async def daily_report_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def send_nightly_report_to_admin(context: ContextTypes.DEFAULT_TYPE):
     """ارسال گزارش شبانه به ادمین"""
     
-    ADMIN_ID = 5669469598  # آیدی تو
+    ADMIN_ID = 5669469598
     
-    conn = sqlite3.connect('financial_bot.db')
+    # اتصال به دیتابیس
+    db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     now = jdatetime.datetime.now()
-    today_pattern = now.strftime('%Y/%m/%d') + "%"
-    today_display = now.strftime('%Y/%m/%d')
-    
+    pattern1 = f"{now.year}/{now.month}/{now.day}%"
+    pattern2 = f"{now.year}/{now.month:02d}/{now.day:02d}%"
+    today_display = f"{now.year}/{now.month:02d}/{now.day:02d}"
+
     # درآمد امروز
     cursor.execute('''
         SELECT COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE user_id = ? AND type = 'income' AND date LIKE ?
-    ''', (ADMIN_ID, today_pattern))
+        WHERE user_id = ? AND type = 'income' AND (date LIKE ? OR date LIKE ?)
+    ''', (ADMIN_ID, pattern1, pattern2))
     today_income = cursor.fetchone()[0]
-    
+
     # هزینه امروز
     cursor.execute('''
         SELECT COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND date LIKE ?
-    ''', (ADMIN_ID, today_pattern))
+        WHERE user_id = ? AND type = 'expense' AND (date LIKE ? OR date LIKE ?)
+    ''', (ADMIN_ID, pattern1, pattern2))
     today_expense = cursor.fetchone()[0]
-    
+
     # تعداد تراکنش‌ها
     cursor.execute('''
         SELECT COUNT(*)
         FROM transactions
-        WHERE user_id = ? AND date LIKE ?
-    ''', (ADMIN_ID, today_pattern))
+        WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
+    ''', (ADMIN_ID, pattern1, pattern2))
     today_count = cursor.fetchone()[0]
-    
+
     # تراکنش‌ها
     cursor.execute('''
         SELECT amount, type, category, description
         FROM transactions
-        WHERE user_id = ? AND date LIKE ?
+        WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
         ORDER BY id DESC
         LIMIT 5
-    ''', (ADMIN_ID, today_pattern))
+    ''', (ADMIN_ID, pattern1, pattern2))
     today_transactions = cursor.fetchall()
-    
+
     conn.close()
-    
+
     # ساخت پیام
     text = f"🌙 **گزارش شبانه** ({today_display})\n\n"
-    
+
     if today_count == 0:
-        text += "📭 امروز تراکنشی ثبت نشده!\n"
+        text += "📭 امروز تراکنشی ثبت نشده!"
     else:
         text += f"📊 **خلاصه امروز:**\n"
         text += f"├ 💰 درآمد: **{today_income:,}** ریال\n"
         text += f"├ 💸 هزینه: **{today_expense:,}** ریال\n"
         text += f"├ 📈 تراز: **{today_income - today_expense:,}** ریال\n"
         text += f"└ 📝 تعداد: {today_count} تراکنش\n\n"
-        
+
         if today_transactions:
             text += "📋 **آخرین تراکنش‌ها:**\n"
             for t in today_transactions:
@@ -2060,18 +2063,18 @@ async def send_nightly_report_to_admin(context: ContextTypes.DEFAULT_TYPE):
                 emoji = "🟢" if t_type == "income" else "🔴"
                 sign = "+" if t_type == "income" else "-"
                 text += f"{emoji} {sign}{amount:,} | {category}\n"
-    
+
     text += "\n💤 شب بخیر!"
-    
+
     try:
         await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=text,
             parse_mode='Markdown'
         )
-        print(f"✅ گزارش شبانه ارسال شد")
+        print(f"✅ گزارش شبانه ارسال شد - {today_display}")
     except Exception as e:
-        print(f"❌ خطا: {e}")
+        print(f"❌ خطا در ارسال گزارش: {e}")
     
     conn.close()
 
@@ -2179,17 +2182,16 @@ def main():
     # ساخت اپلیکیشن
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # -------------------- ⏰ زمان‌بندی گزارش شبانه --------------------
+    # ⏰ زمان‌بندی گزارش شبانه - ساعت 23:00 تهران
     tehran_tz = pytz.timezone('Asia/Tehran')
-    job_queue = application.job_queue
+    target_time = datetime.time(hour=23, minute=0, second=0, tzinfo=tehran_tz)
     
-    # هر شب ساعت 23:00 به وقت تهران
-    job_queue.run_daily(
+    application.job_queue.run_daily(
         send_nightly_report_to_admin,
-        time=datetime.time(hour=23, minute=0, second=0, tzinfo=tehran_tz),
+        time=target_time,
         name="nightly_report"
     )
-    print("⏰ گزارش شبانه تنظیم شد: هر شب ساعت 23:00")
+    print(f"⏰ گزارش شبانه تنظیم شد: هر شب ساعت 23:00 تهران")
 
     # -------------------- هندلر ثبت دستی --------------------
     conv_handler = ConversationHandler(
