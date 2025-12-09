@@ -1882,66 +1882,64 @@ async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """گزارش روزانه"""
     user_id = update.effective_user.id
-    
-    # تاریخ امروز شمسی
-    # هر دو فرمت رو چک کن
+
+    # تاریخ امروز شمسی - هر دو فرمت
     now = jdatetime.datetime.now()
     today_formatted = now.strftime('%Y/%m/%d')  # 1404/09/18
     today_simple = f"{now.year}/{now.month}/{now.day}"  # 1404/9/18
 
-    
     conn = sqlite3.connect('financial_bot.db')
     cursor = conn.cursor()
-    
-   # درآمد امروز
+
+    # درآمد امروز
     cursor.execute('''
-    SELECT COALESCE(SUM(amount), 0)
-    FROM transactions
-    WHERE user_id = ? AND type = 'income' AND (date = ? OR date = ?)
-''', (user_id, today_formatted, today_simple))
+        SELECT COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE user_id = ? AND type = 'income' AND (date = ? OR date = ?)
+    ''', (user_id, today_formatted, today_simple))
     today_income = cursor.fetchone()[0]
 
-# هزینه امروز
+    # هزینه امروز
     cursor.execute('''
-    SELECT COALESCE(SUM(amount), 0)
-    FROM transactions
-    WHERE user_id = ? AND type = 'expense' AND (date = ? OR date = ?)
-''', (user_id, today_formatted, today_simple))
+        SELECT COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE user_id = ? AND type = 'expense' AND (date = ? OR date = ?)
+    ''', (user_id, today_formatted, today_simple))
     today_expense = cursor.fetchone()[0]
 
-# تعداد تراکنش‌های امروز
+    # تعداد تراکنش‌های امروز
     cursor.execute('''
-    SELECT COUNT(*)
-    FROM transactions
-    WHERE user_id = ? AND (date = ? OR date = ?)
-''', (user_id, today_formatted, today_simple))
+        SELECT COUNT(*)
+        FROM transactions
+        WHERE user_id = ? AND (date = ? OR date = ?)
+    ''', (user_id, today_formatted, today_simple))
     today_count = cursor.fetchone()[0]
-    
+
     # لیست هزینه‌های امروز با دسته‌بندی
     cursor.execute('''
         SELECT category, SUM(amount)
         FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND date = ?
+        WHERE user_id = ? AND type = 'expense' AND (date = ? OR date = ?)
         GROUP BY category
         ORDER BY SUM(amount) DESC
-    ''', (user_id, today))
+    ''', (user_id, today_formatted, today_simple))
     expense_by_category = cursor.fetchall()
-    
+
     # لیست تراکنش‌های امروز
     cursor.execute('''
         SELECT amount, type, category, description
         FROM transactions
-        WHERE user_id = ? AND date = ?
+        WHERE user_id = ? AND (date = ? OR date = ?)
         ORDER BY id DESC
         LIMIT 10
-    ''', (user_id, today))
+    ''', (user_id, today_formatted, today_simple))
     today_transactions = cursor.fetchall()
-    
+
     conn.close()
-    
+
     # ساخت متن گزارش
-    text = f"📅 **گزارش امروز** ({today})\n\n"
-    
+    text = f"📅 **گزارش امروز** ({today_formatted})\n\n"
+
     if today_count == 0:
         text += "📭 امروز هنوز تراکنشی ثبت نشده!"
     else:
@@ -1950,16 +1948,14 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"├ 💸 هزینه: **{today_expense:,}** ریال\n"
         text += f"├ 📈 تراز: **{today_income - today_expense:,}** ریال\n"
         text += f"└ 📝 تعداد: {today_count} تراکنش\n\n"
-        
-        # هزینه بر اساس دسته‌بندی
+
         if expense_by_category:
             text += "📁 **هزینه‌ها بر اساس دسته:**\n"
             for cat, amount in expense_by_category:
                 percent = (amount / today_expense * 100) if today_expense > 0 else 0
                 text += f"├ {cat}: {amount:,} ({percent:.0f}%)\n"
             text += "\n"
-        
-        # لیست تراکنش‌ها
+
         if today_transactions:
             text += "📋 **تراکنش‌های امروز:**\n"
             for t in today_transactions:
@@ -1968,10 +1964,10 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sign = "+" if t_type == "income" else "-"
                 desc_text = f" - {desc}" if desc else ""
                 text += f"{emoji} {sign}{amount:,} | {category}{desc_text}\n"
-    
+
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     if update.callback_query:
         await update.callback_query.answer()
         await update.callback_query.edit_message_text(
@@ -1981,6 +1977,7 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             text, parse_mode='Markdown', reply_markup=reply_markup
         )
+
 
 async def daily_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """کالبک گزارش روزانه"""
