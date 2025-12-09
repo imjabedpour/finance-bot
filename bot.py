@@ -2309,7 +2309,7 @@ async def test_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text += f"{emoji} {sign}{amount:,} | {category}\n"
 
         text += "\n✅ تست موفق!"
-        text += "\n شب بخیر❤️"
+        text += "\n 🟢شب بخیر❤️"
         await update.message.reply_text(text, parse_mode='Markdown')
         
     except Exception as e:
