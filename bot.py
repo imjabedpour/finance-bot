@@ -75,11 +75,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton("📊 نمودار", callback_data="chart"),
+            InlineKeyboardButton("📅 امروز", callback_data="daily_report"),
+        ],
+        [
             InlineKeyboardButton("⚙️ مدیریت", callback_data="manage"),
         ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(welcome, parse_mode='Markdown', reply_markup=reply_markup)
+
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -120,6 +124,9 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton("📊 نمودار", callback_data="chart"),
+            InlineKeyboardButton("📅 امروز", callback_data="daily_report"),
+        ],
+        [
             InlineKeyboardButton("⚙️ مدیریت", callback_data="manage"),
         ],
     ]
@@ -129,6 +136,7 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown',
         reply_markup=reply_markup
     )
+
 # ================== موجودی ==================
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1526,10 +1534,10 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 پیام بانک رو مستقیم فوروارد کن!
 """
 
-    keyboard = [
+       keyboard = [
         [
-            InlineKeyboardButton("💸 ثبت هزینه", callback_data="new_expense"),
-            InlineKeyboardButton("💰 ثبت درآمد", callback_data="new_income"),
+            InlineKeyboardButton("➕ ثبت هزینه", callback_data="new_expense"),
+            InlineKeyboardButton("➕ ثبت درآمد", callback_data="new_income"),
         ],
         [
             InlineKeyboardButton("💵 موجودی", callback_data="balance"),
@@ -1537,9 +1545,13 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton("📊 نمودار", callback_data="chart"),
+            InlineKeyboardButton("📅 امروز", callback_data="daily_report"),  # ← اضافه شد
+        ],
+        [
             InlineKeyboardButton("⚙️ مدیریت", callback_data="manage"),
         ],
     ]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(welcome, parse_mode='Markdown', reply_markup=reply_markup)
@@ -1847,6 +1859,112 @@ async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 
+# ================== گزارش روزانه ==================
+
+async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """گزارش روزانه"""
+    user_id = update.effective_user.id
+    
+    # تاریخ امروز شمسی
+    today = jdatetime.datetime.now().strftime('%Y/%m/%d')
+    
+    conn = sqlite3.connect('financial_bot.db')
+    cursor = conn.cursor()
+    
+    # درآمد امروز
+    cursor.execute('''
+        SELECT COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE user_id = ? AND type = 'income' AND date = ?
+    ''', (user_id, today))
+    today_income = cursor.fetchone()[0]
+    
+    # هزینه امروز
+    cursor.execute('''
+        SELECT COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE user_id = ? AND type = 'expense' AND date = ?
+    ''', (user_id, today))
+    today_expense = cursor.fetchone()[0]
+    
+    # تعداد تراکنش‌های امروز
+    cursor.execute('''
+        SELECT COUNT(*)
+        FROM transactions
+        WHERE user_id = ? AND date = ?
+    ''', (user_id, today))
+    today_count = cursor.fetchone()[0]
+    
+    # لیست هزینه‌های امروز با دسته‌بندی
+    cursor.execute('''
+        SELECT category, SUM(amount)
+        FROM transactions
+        WHERE user_id = ? AND type = 'expense' AND date = ?
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    ''', (user_id, today))
+    expense_by_category = cursor.fetchall()
+    
+    # لیست تراکنش‌های امروز
+    cursor.execute('''
+        SELECT amount, type, category, description
+        FROM transactions
+        WHERE user_id = ? AND date = ?
+        ORDER BY id DESC
+        LIMIT 10
+    ''', (user_id, today))
+    today_transactions = cursor.fetchall()
+    
+    conn.close()
+    
+    # ساخت متن گزارش
+    text = f"📅 **گزارش امروز** ({today})\n\n"
+    
+    if today_count == 0:
+        text += "📭 امروز هنوز تراکنشی ثبت نشده!"
+    else:
+        text += f"📊 **خلاصه:**\n"
+        text += f"├ 💰 درآمد: **{today_income:,}** ریال\n"
+        text += f"├ 💸 هزینه: **{today_expense:,}** ریال\n"
+        text += f"├ 📈 تراز: **{today_income - today_expense:,}** ریال\n"
+        text += f"└ 📝 تعداد: {today_count} تراکنش\n\n"
+        
+        # هزینه بر اساس دسته‌بندی
+        if expense_by_category:
+            text += "📁 **هزینه‌ها بر اساس دسته:**\n"
+            for cat, amount in expense_by_category:
+                percent = (amount / today_expense * 100) if today_expense > 0 else 0
+                text += f"├ {cat}: {amount:,} ({percent:.0f}%)\n"
+            text += "\n"
+        
+        # لیست تراکنش‌ها
+        if today_transactions:
+            text += "📋 **تراکنش‌های امروز:**\n"
+            for t in today_transactions:
+                amount, t_type, category, desc = t
+                emoji = "🟢" if t_type == "income" else "🔴"
+                sign = "+" if t_type == "income" else "-"
+                desc_text = f" - {desc}" if desc else ""
+                text += f"{emoji} {sign}{amount:,} | {category}{desc_text}\n"
+    
+    keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            text, parse_mode='Markdown', reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            text, parse_mode='Markdown', reply_markup=reply_markup
+        )
+
+async def daily_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """کالبک گزارش روزانه"""
+    await daily_report(update, context)
+
+
 # ================== تابع اصلی ==================
 
 def main():
@@ -1922,6 +2040,7 @@ def main():
         ],
     )
 
+
     # -------------------- دستورات اصلی --------------------
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -1970,6 +2089,12 @@ def main():
     application.add_handler(CallbackQueryHandler(delete_transaction_start, pattern=r"^delete_\d+$"))
     application.add_handler(CallbackQueryHandler(confirm_delete, pattern="^confirm_delete$"))
 
+    # کالبک گزارش روزانه
+    application.add_handler(CallbackQueryHandler(daily_report_callback, pattern="^daily_report$"))
+    
+    # دستور گزارش روزانه
+    application.add_handler(CommandHandler("today", daily_report))
+    
     # -------------------- هندلر یام‌های متنی (آخر!) --------------------
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text_message))
 
@@ -1984,6 +2109,3 @@ if __name__ == "__main__":
     main()
 
 
-
-if __name__ == "__main__":
-    main()
