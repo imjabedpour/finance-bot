@@ -11,8 +11,7 @@ def get_db_path():
 
 def get_connection():
     """ایجاد اتصال به دیتابیس"""
-    db_path = get_db_path()
-    return sqlite3.connect(db_path)
+    return sqlite3.connect(get_db_path())
 
 def init_db():
     """ایجاد جداول دیتابیس"""
@@ -44,9 +43,6 @@ def init_db():
     conn.commit()
     conn.close()
     print(f"✅ Database initialized at: {get_db_path()}")
-
-# ⭐ Alias برای سازگاری با bot.py
-create_tables = init_db
 
 def add_user(user_id, username, first_name):
     """اضافه کردن کاربر جدید"""
@@ -87,6 +83,21 @@ def get_user_transactions(user_id, limit=10):
     conn.close()
     return results
 
+def get_transactions_with_id(user_id, limit=10):
+    """دریافت تراکنش‌ها با ID"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, amount, type, category, description, date
+        FROM transactions
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+    ''', (user_id, limit))
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
 def get_user_balance(user_id):
     """محاسبه موجودی کاربر"""
     conn = get_connection()
@@ -100,7 +111,16 @@ def get_user_balance(user_id):
     
     conn.close()
     return {'income': total_income, 'expense': total_expense, 'balance': total_income - total_expense}
-# ⭐ Alias برای سازگاری با bot.py
+
+def delete_transaction(transaction_id, user_id):
+    """حذف تراکنش"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM transactions WHERE id = ? AND user_id = ?', (transaction_id, user_id))
+    conn.commit()
+    conn.close()
+
+# ⭐ Alias برای سازگاری
 create_tables = init_db
 get_balance = get_user_balance
 
