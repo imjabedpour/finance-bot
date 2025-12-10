@@ -7,6 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
+TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters, 
@@ -339,7 +340,7 @@ async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         import jdatetime
-        now = jdatetime.datetime.now()
+        now = jdatetime.datetime.now(tz=TEHRAN_TZ)
         
         # الگوی ماه جاری
         month_pattern = f"{now.year}/{now.month:02d}/%"
@@ -1384,7 +1385,7 @@ async def manage_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     # تاریخ شمسی
-    now = jdatetime.datetime.now()
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
     
     # دو الگو برای سازگاری با فرمت‌های مختلف تاریخ
     pattern1 = f"{now.year}/{now.month}/%"      # 1404/9/...
@@ -1643,7 +1644,7 @@ async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         import jdatetime
-        now = jdatetime.datetime.now()
+        now = jdatetime.datetime.now(tz=TEHRAN_TZ)
         
         # الگوی ماه جاری: 1404/09/%
         month_pattern = f"{now.year}/{now.month:02d}/%"
@@ -1960,7 +1961,7 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     # تاریخ امروز - هر دو فرمت برای سازگاری
-    now = jdatetime.datetime.now()
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
     
     # الگوهای مختلف تاریخ (با صفر و بدون صفر)
     pattern1 = f"{now.year}/{now.month}/{now.day}%"      # 1404/9/18%
@@ -2073,7 +2074,7 @@ async def send_nightly_report_to_admin(context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    now = jdatetime.datetime.now()
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
     pattern1 = f"{now.year}/{now.month}/{now.day}%"
     pattern2 = f"{now.year}/{now.month:02d}/{now.day:02d}%"
     today_display = f"{now.year}/{now.month:02d}/{now.day:02d}"
@@ -2157,7 +2158,7 @@ async def send_nightly_report_to_admin(context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    now = jdatetime.datetime.now()
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
     today_pattern = now.strftime('%Y/%m/%d') + "%"
     today_display = now.strftime('%Y/%m/%d')
     
@@ -2247,7 +2248,7 @@ async def test_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        now = jdatetime.datetime.now()
+        now = jdatetime.datetime.now(tz=TEHRAN_TZ)
         pattern1 = f"{now.year}/{now.month}/{now.day}%"
         pattern2 = f"{now.year}/{now.month:02d}/{now.day:02d}%"
         today_display = f"{now.year}/{now.month:02d}/{now.day:02d}"

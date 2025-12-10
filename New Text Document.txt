@@ -4,4 +4,10 @@ git push
 
 
 
+
 git add . && git commit -m "fix database import" && git push
+
+
+git add .
+git commit -m "Update all files"
+git push

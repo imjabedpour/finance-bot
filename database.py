@@ -2,6 +2,9 @@
 import sqlite3
 import os
 import jdatetime
+import pytz
+
+TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
 def get_db_path():
     """مسیر دیتابیس"""
@@ -17,7 +20,7 @@ def init_db():
     """ایجاد جداول"""
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -26,7 +29,7 @@ def init_db():
             created_at TEXT
         )
     ''')
-    
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +41,7 @@ def init_db():
             date TEXT
         )
     ''')
-    
+
     conn.commit()
     conn.close()
     print(f"✅ Database initialized at: {get_db_path()}")
@@ -47,7 +50,7 @@ def add_user(user_id, username=None, first_name=None):
     """افزودن کاربر"""
     conn = get_connection()
     cursor = conn.cursor()
-    now = jdatetime.datetime.now().strftime('%Y/%m/%d %H:%M')
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ).strftime('%Y/%m/%d %H:%M')
     cursor.execute('INSERT OR IGNORE INTO users VALUES (?, ?, ?, ?)',
                    (user_id, username, first_name, now))
     conn.commit()
@@ -57,7 +60,7 @@ def add_transaction(user_id, amount, trans_type, category, description=""):
     """افزودن تراکنش"""
     conn = get_connection()
     cursor = conn.cursor()
-    now = jdatetime.datetime.now().strftime('%Y/%m/%d %H:%M')
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ).strftime('%Y/%m/%d %H:%M')
     cursor.execute('''
         INSERT INTO transactions (user_id, amount, type, category, description, date)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -104,10 +107,10 @@ def get_user_balance(user_id):
     """موجودی کاربر"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND type = ?', 
+    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND type = ?',
                    (user_id, 'income'))
     income = cursor.fetchone()[0]
-    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND type = ?', 
+    cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND type = ?',
                    (user_id, 'expense'))
     expense = cursor.fetchone()[0]
     conn.close()
