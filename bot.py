@@ -24,7 +24,6 @@ from database import (
 from sms_parser import parse_bank_sms
 from charts import create_pie_chart, create_daily_chart, create_weekly_chart, create_monthly_chart
 
-
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 

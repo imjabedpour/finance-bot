@@ -2,18 +2,17 @@
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
 from bidi.algorithm import get_display
 import arabic_reshaper
 import io
-import jdatetime
 from collections import defaultdict
+import jdatetime
 
 # تنظیمات فونت
 plt.rcParams['font.family'] = 'DejaVu Sans'
 plt.rcParams['axes.unicode_minus'] = False
 
-def reshape_persian(text):
+def reshape_farsi(text):
     """تبدیل متن فارسی برای نمایش صحیح"""
     try:
         reshaped = arabic_reshaper.reshape(str(text))
@@ -22,24 +21,16 @@ def reshape_persian(text):
         return str(text)
 
 def format_amount(amount):
-    """فرمت‌بندی مبلغ به K و M"""
-    if abs(amount) >= 1_000_000:
-        return f'{amount/1_000_000:.1f}M'
-    elif abs(amount) >= 1_000:
-        return f'{amount/1_000:.0f}K'
+    """فرمت‌بندی مبلغ"""
+    if amount >= 1000000:
+        return f'{amount/1000000:.1f}M'
+    elif amount >= 1000:
+        return f'{amount/1000:.0f}K'
     return str(int(amount))
 
-# ================== رنگ‌های استاندارد ==================
-
-COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-          '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
-          '#F8B500', '#6C5CE7', '#A29BFE', '#FD79A8', '#00B894']
-
-# ================== نمودار دایره‌ای ==================
 
 def create_pie_chart(transactions):
-    """نمودار دایره‌ای سهم هر دسته از هزینه‌ها"""
-
+    """نمودار دایره‌ای هزینه‌ها"""
     if not transactions:
         return None
 
@@ -59,13 +50,14 @@ def create_pie_chart(transactions):
     if not category_totals:
         return None
 
-    # مرتب‌سازی بر اساس مبلغ
     sorted_categories = sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
     categories = [item[0] for item in sorted_categories]
     amounts = [item[1] for item in sorted_categories]
     total = sum(amounts)
 
-    # ایجاد نمودار
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+              '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
+
     fig, ax = plt.subplots(figsize=(12, 8), facecolor='#FAFAFA')
     ax.set_facecolor('#FAFAFA')
 
@@ -82,7 +74,7 @@ def create_pie_chart(transactions):
     wedges, texts, autotexts = ax.pie(
         amounts,
         autopct=make_autopct(amounts),
-        colors=COLORS[:len(categories)],
+        colors=colors[:len(categories)],
         explode=explode,
         startangle=90,
         wedgeprops={'edgecolor': 'white', 'linewidth': 2},
@@ -95,25 +87,24 @@ def create_pie_chart(transactions):
         autotext.set_color('#333333')
         autotext.set_fontweight('bold')
 
-    # Legend
     legend_labels = []
     for cat, amt in zip(categories, amounts):
         pct = (amt / total) * 100
-        label = f'{reshape_persian(cat)}: {amt:,} ({pct:.1f}%)'
+        label = f'{reshape_farsi(cat)}: {amt:,} ({pct:.1f}%)'
         legend_labels.append(label)
 
     ax.legend(wedges, legend_labels,
-              title=reshape_persian('دسته‌بندی'),
+              title=reshape_farsi('دسته‌بندی'),
               loc='center left',
               bbox_to_anchor=(1, 0.5),
               fontsize=10)
 
-    ax.set_title(f'{reshape_persian("🥧 سهم هر دسته از هزینه‌ها")}\n{reshape_persian(f"مجموع: {total:,} ریال")}',
+    ax.set_title(f'{reshape_farsi("هزینه‌های ماهانه")}\n{reshape_farsi(f"مجموع: {total:,} ریال")}',
                  fontsize=14, fontweight='bold', color='#2C3E50', pad=20)
 
-    # دایره مرکزی (Donut)
     centre_circle = plt.Circle((0, 0), 0.50, fc='#FAFAFA')
     ax.add_artist(centre_circle)
+
     ax.text(0, 0, f'{format_amount(total)}', ha='center', va='center',
             fontsize=14, fontweight='bold', color='#2C3E50')
 
@@ -126,11 +117,9 @@ def create_pie_chart(transactions):
 
     return buf
 
-# ================== نمودار روزانه ==================
 
 def create_daily_chart(transactions):
-    """نمودار میله‌ای روزانه + خط تراز تجمعی"""
-
+    """نمودار میله‌ای روزانه"""
     if not transactions:
         return None
 
@@ -150,75 +139,59 @@ def create_daily_chart(transactions):
         except:
             continue
 
-    # مرتب‌سازی صحیح تاریخ‌ها
-    all_dates = sorted(
-        set(daily_income.keys()) | set(daily_expense.keys()),
-        key=lambda d: [int(p) for p in d.split('/')]
-    )
+    all_dates = sorted(set(daily_income.keys()) | set(daily_expense.keys()))
 
     if not all_dates:
         return None
 
+    # فقط ۱۴ روز اخیر
+    all_dates = all_dates[-14:]
+
     incomes = [daily_income.get(d, 0) for d in all_dates]
     expenses = [daily_expense.get(d, 0) for d in all_dates]
+    labels = [d.split('/')[-1] for d in all_dates]
 
-    # تراز تجمعی
+    fig, ax1 = plt.subplots(figsize=(14, 7), facecolor='#FAFAFA')
+    ax1.set_facecolor('#FAFAFA')
+
+    x = list(range(len(labels)))
+    width = 0.35
+
+    bars1 = ax1.bar([i - width/2 for i in x], incomes, width, 
+                    label=reshape_farsi('درآمد'), color='#4A90D9', edgecolor='white')
+    bars2 = ax1.bar([i + width/2 for i in x], expenses, width, 
+                    label=reshape_farsi('هزینه'), color='#E74C3C', edgecolor='white')
+
+    ax1.set_xlabel(reshape_farsi('روز'), fontsize=11)
+    ax1.set_ylabel(reshape_farsi('مبلغ'), fontsize=11)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, fontsize=9)
+
+    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda val, pos: format_amount(val)))
+
+    # محور دوم - خط تراز تجمعی
+    ax2 = ax1.twinx()
+
     cumulative_balance = []
     running = 0
     for inc, exp in zip(incomes, expenses):
         running += inc - exp
         cumulative_balance.append(running)
 
-    # فقط روز رو نشون بده
-    labels = [d.split('/')[-1] for d in all_dates]
+    ax2.plot(x, cumulative_balance, color='#27AE60', linewidth=2.5,
+             marker='o', markersize=6, label=reshape_farsi('تراز تجمعی'), linestyle='-', zorder=10)
 
-    # ایجاد نمودار
-    fig, ax1 = plt.subplots(figsize=(14, 7), facecolor='#FAFAFA')
-    ax1.set_facecolor('#FAFAFA')
-
-    x = np.arange(len(labels))
-    width = 0.35
-
-    # میله‌ها
-    ax1.bar(x - width/2, incomes, width, label=reshape_persian('درآمد'),
-            color='#4A90D9', edgecolor='white')
-    ax1.bar(x + width/2, expenses, width, label=reshape_persian('هزینه'),
-            color='#E74C3C', edgecolor='white')
-
-    ax1.set_xlabel(reshape_persian('روز'), fontsize=11)
-    ax1.set_ylabel(reshape_persian('مبلغ'), fontsize=11)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(labels, fontsize=9)
-    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda val, pos: format_amount(val)))
-
-    # محور دوم - خط تراز
-    ax2 = ax1.twinx()
-    ax2.plot(x, cumulative_balance,
-             color='#27AE60',
-             linewidth=3,
-             marker='o',
-             markersize=8,
-             markerfacecolor='white',
-             markeredgecolor='#27AE60',
-             markeredgewidth=2,
-             linestyle='-',
-             zorder=10,
-             label=reshape_persian('تراز تجمعی'))
-
-    ax2.set_ylabel(reshape_persian('تراز تجمعی'), fontsize=11, color='#27AE60')
+    ax2.set_ylabel(reshape_farsi('تراز'), fontsize=11, color='#27AE60')
     ax2.tick_params(axis='y', labelcolor='#27AE60')
     ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda val, pos: format_amount(val)))
 
-    ax1.set_title(reshape_persian('📅 گزارش روزانه - درآمد و هزینه'),
+    ax1.set_title(reshape_farsi('روند ورود و خروج پول - روزانه'),
                   fontsize=14, fontweight='bold', color='#2C3E50', pad=20)
 
     ax1.grid(axis='y', linestyle='--', alpha=0.3)
     ax1.spines['top'].set_visible(False)
-
-    # Legend ترکیبی
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right', fontsize=10)
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
 
     plt.tight_layout()
 
@@ -229,93 +202,62 @@ def create_daily_chart(transactions):
 
     return buf
 
-# ================== نمودار هفتگی ==================
 
 def create_weekly_chart(transactions):
-    """نمودار هفتگی - مقایسه هفته‌های ماه"""
-
+    """نمودار هفتگی"""
     if not transactions:
         return None
 
-    weekly_income = defaultdict(int)
-    weekly_expense = defaultdict(int)
+    weekly_data = defaultdict(lambda: {'income': 0, 'expense': 0})
 
     for tx in transactions:
         try:
             amount = int(tx[2])
             tx_type = str(tx[3]).strip().lower()
             date_str = str(tx[6]).split()[0]
-
+            
             parts = date_str.split('/')
-            day = int(parts[2])
-
-            # شماره هفته در ماه (۱-۵)
+            year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
             week_num = (day - 1) // 7 + 1
-            week_key = f"هفته {week_num}"
+            week_key = f"{year}/{month:02d}-W{week_num}"
 
             if tx_type == 'income':
-                weekly_income[week_key] += amount
+                weekly_data[week_key]['income'] += amount
             elif tx_type == 'expense':
-                weekly_expense[week_key] += amount
+                weekly_data[week_key]['expense'] += amount
         except:
             continue
 
-    if not weekly_income and not weekly_expense:
+    if not weekly_data:
         return None
 
-    # مرتب‌سازی هفته‌ها
-    weeks = ['هفته 1', 'هفته 2', 'هفته 3', 'هفته 4', 'هفته 5']
-    weeks = [w for w in weeks if w in weekly_income or w in weekly_expense]
+    sorted_weeks = sorted(weekly_data.keys())[-4:]
 
-    if not weeks:
-        return None
+    week_labels = [f"W{w.split('-W')[1]}" for w in sorted_weeks]
+    incomes = [weekly_data[w]['income'] for w in sorted_weeks]
+    expenses = [weekly_data[w]['expense'] for w in sorted_weeks]
+    balances = [weekly_data[w]['income'] - weekly_data[w]['expense'] for w in sorted_weeks]
 
-    incomes = [weekly_income.get(w, 0) for w in weeks]
-    expenses = [weekly_expense.get(w, 0) for w in weeks]
-    balances = [inc - exp for inc, exp in zip(incomes, expenses)]
-
-    # ایجاد نمودار
-    fig, ax = plt.subplots(figsize=(12, 7), facecolor='#FAFAFA')
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor='#FAFAFA')
     ax.set_facecolor('#FAFAFA')
 
-    x = np.arange(len(weeks))
+    x = list(range(len(week_labels)))
     width = 0.25
 
-    bars1 = ax.bar(x - width, incomes, width, label=reshape_persian('درآمد'),
-                   color='#4A90D9', edgecolor='white')
-    bars2 = ax.bar(x, expenses, width, label=reshape_persian('هزینه'),
-                   color='#E74C3C', edgecolor='white')
-    
-    # رنگ تراز بر اساس مثبت/منفی
-    bar_colors = ['#27AE60' if b >= 0 else '#E67E22' for b in balances]
-    bars3 = ax.bar(x + width, balances, width, label=reshape_persian('تراز'),
-                   color=bar_colors, edgecolor='white')
+    ax.bar([i - width for i in x], incomes, width, label=reshape_farsi('درآمد'), color='#27ae60')
+    ax.bar(x, expenses, width, label=reshape_farsi('هزینه'), color='#e74c3c')
+    ax.bar([i + width for i in x], balances, width, label=reshape_farsi('تراز'), color='#3498db')
 
-    ax.set_xlabel(reshape_persian('هفته'), fontsize=11)
-    ax.set_ylabel(reshape_persian('مبلغ (ریال)'), fontsize=11)
+    ax.set_xlabel(reshape_farsi('هفته'), fontsize=12)
+    ax.set_ylabel(reshape_farsi('مبلغ (ریال)'), fontsize=12)
     ax.set_xticks(x)
-    ax.set_xticklabels([reshape_persian(w) for w in weeks], fontsize=10)
+    ax.set_xticklabels(week_labels)
+    ax.legend()
+    ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda val, pos: format_amount(val)))
 
-    # مقدار روی میله‌ها
-    for bars in [bars1, bars2, bars3]:
-        for bar in bars:
-            height = bar.get_height()
-            if height != 0:
-                ax.annotate(format_amount(height),
-                            xy=(bar.get_x() + bar.get_width() / 2, height),
-                            xytext=(0, 3),
-                            textcoords="offset points",
-                            ha='center', va='bottom', fontsize=8)
-
-    ax.set_title(reshape_persian('📆 گزارش هفتگی - مقایسه هفته‌ها'),
-                 fontsize=14, fontweight='bold', color='#2C3E50', pad=20)
-
-    ax.legend(loc='upper right', fontsize=10)
-    ax.grid(axis='y', linestyle='--', alpha=0.3)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.axhline(y=0, color='gray', linestyle='-', linewidth=0.5)
+    ax.set_title(reshape_farsi('نمودار هفتگی (۴ هفته اخیر)'),
+                 fontsize=14, fontweight='bold', color='#2C3E50', pad=15)
 
     plt.tight_layout()
 
@@ -326,83 +268,60 @@ def create_weekly_chart(transactions):
 
     return buf
 
-# ================== نمودار ماهانه ==================
 
 def create_monthly_chart(months_data):
-    """نمودار ماهانه - مقایسه ۳ ماه اخیر
-    
-    months_data: لیست دیکشنری با کلیدهای 'name', 'income', 'expense'
-    """
-
+    """نمودار ماهانه - ۳ ماه اخیر"""
     if not months_data:
         return None
 
-    month_names = [m['name'] for m in months_data]
-    incomes = [m['income'] for m in months_data]
-    expenses = [m['expense'] for m in months_data]
-    balances = [m['income'] - m['expense'] for m in months_data]
+    month_names_fa = ["", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                      "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
 
-    # ایجاد نمودار
-    fig, ax = plt.subplots(figsize=(12, 7), facecolor='#FAFAFA')
+    labels = []
+    incomes = []
+    expenses = []
+    balances = []
+
+    for m in months_data:
+        name = m.get('name', '')
+        if '/' in name:
+            try:
+                month_num = int(name.split('/')[1])
+                labels.append(reshape_farsi(month_names_fa[month_num]))
+            except:
+                labels.append(reshape_farsi(name))
+        else:
+            labels.append(reshape_farsi(name))
+
+        incomes.append(m.get('income', 0))
+        expenses.append(m.get('expense', 0))
+        balances.append(m.get('income', 0) - m.get('expense', 0))
+
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor='#FAFAFA')
     ax.set_facecolor('#FAFAFA')
 
-    x = np.arange(len(month_names))
+    x = list(range(len(labels)))
     width = 0.25
- 
-    bars1 = ax.bar(x - width, incomes, width,
-                   label=reshape_persian('درآمد'),
-                   color='#4A90D9', edgecolor='white')
 
-    bars2 = ax.bar(x, expenses, width,
-                   label=reshape_persian('هزینه'),
-                   color='#E74C3C', edgecolor='white')
+    ax.bar([i - width for i in x], incomes, width, label=reshape_farsi('درآمد'), color='#27ae60')
+    ax.bar(x, expenses, width, label=reshape_farsi('هزینه'), color='#e74c3c')
+    ax.bar([i + width for i in x], balances, width, label=reshape_farsi('تراز'), color='#3498db')
 
-    bar_colors = ['#27AE60' if b >= 0 else '#E67E22' for b in balances]
-    bars3 = ax.bar(x + width, balances, width,
-                   label=reshape_persian('تراز'),
-                   color=bar_colors, edgecolor='white')
-
-    ax.set_xlabel(reshape_persian('ماه'), fontsize=11)
-    ax.set_ylabel(reshape_persian('مبلغ (ریال)'), fontsize=11)
+    ax.set_xlabel(reshape_farsi('ماه'), fontsize=12)
+    ax.set_ylabel(reshape_farsi('مبلغ (ریال)'), fontsize=12)
     ax.set_xticks(x)
-    ax.set_xticklabels([reshape_persian(m) for m in month_names], fontsize=10)
-    ax.yaxis.set_major_formatter(
-        plt.FuncFormatter(lambda val, pos: format_amount(val))
-    )
+    ax.set_xticklabels(labels, fontsize=11)
+    ax.legend()
+    ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda val, pos: format_amount(val)))
 
-    # نمایش مقدار روی میله‌ها
-    for bars in [bars1, bars2, bars3]:
-        for bar in bars:
-            height = bar.get_height()
-            if height != 0:
-                ax.annotate(
-                    format_amount(height),
-                    xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 3),
-                    textcoords="offset points",
-                    ha='center', va='bottom',
-                    fontsize=8
-                )
-
-    ax.set_title(
-        reshape_persian('🗓️ روند مالی ۳ ماه اخیر'),
-        fontsize=14,
-        fontweight='bold',
-        color='#2C3E50',
-        pad=20
-    )
-
-    ax.legend(loc='upper right', fontsize=10)
-    ax.grid(axis='y', linestyle='--', alpha=0.3)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.axhline(y=0, color='gray', linestyle='-', linewidth=0.5)
+    ax.set_title(reshape_farsi('نمودار ماهانه (۳ ماه اخیر)'),
+                 fontsize=14, fontweight='bold', color='#2C3E50', pad=15)
 
     plt.tight_layout()
 
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150,
-                bbox_inches='tight', facecolor='#FAFAFA')
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#FAFAFA')
     buf.seek(0)
     plt.close(fig)
 
