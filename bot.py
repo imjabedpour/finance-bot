@@ -2544,11 +2544,11 @@ def main():
     application.add_handler(CallbackQueryHandler(delete_transaction_start, pattern=r"^delete_\d+$"))
     application.add_handler(CallbackQueryHandler(confirm_delete, pattern="^confirm_delete$"))
 
-     application.add_handler(CallbackQueryHandler(chart_menu, pattern="^chart$"))
-     application.add_handler(CallbackQueryHandler(chart_daily, pattern="^chart_daily$"))
-     application.add_handler(CallbackQueryHandler(chart_weekly, pattern="^chart_weekly$"))
-     application.add_handler(CallbackQueryHandler(chart_monthly, pattern="^chart_monthly$"))
-     application.add_handler(CallbackQueryHandler(chart_pie, pattern="^chart_pie$"))
+    application.add_handler(CallbackQueryHandler(chart_menu, pattern="^chart$"))
+    application.add_handler(CallbackQueryHandler(chart_daily, pattern="^chart_daily$"))
+    application.add_handler(CallbackQueryHandler(chart_weekly, pattern="^chart_weekly$"))
+    application.add_handler(CallbackQueryHandler(chart_monthly, pattern="^chart_monthly$"))
+    application.add_handler(CallbackQueryHandler(chart_pie, pattern="^chart_pie$"))
 
 
     # کالبک گزارش روزانه
