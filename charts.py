@@ -2,12 +2,12 @@
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 from bidi.algorithm import get_display
 import arabic_reshaper
 import io
-from collections import defaultdict
-import numpy as np
 import jdatetime
+from collections import defaultdict
 
 # تنظیمات فونت
 plt.rcParams['font.family'] = 'DejaVu Sans'

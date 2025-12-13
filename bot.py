@@ -22,7 +22,8 @@ from database import (
     get_monthly_report, get_user_stats, delete_all_transactions
 )
 from sms_parser import parse_bank_sms
-from charts import create_pie_chart, create_bar_chart
+from charts import create_pie_chart, create_daily_chart, create_weekly_chart, create_monthly_chart
+
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -1764,7 +1765,7 @@ async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(f"❌ تراکنشی برای ماه {month_name} ثبت نشده!")
             return
         
-        from charts import create_pie_chart, create_bar_chart
+        from charts import create_pie_chart, create_daily_chart
         
         # نمودار دایره‌ای
         pie_chart = create_pie_chart(month_transactions)
@@ -1775,7 +1776,7 @@ async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         
         # نمودار میله‌ای
-        bar_chart = create_bar_chart(month_transactions)
+        bar_chart = create_daily_chart(month_transactions)
         if bar_chart:
             await query.message.reply_photo(
                 photo=bar_chart,
