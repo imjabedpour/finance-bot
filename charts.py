@@ -132,92 +132,109 @@ def create_pie_chart(transactions):
 
 def create_bar_chart(transactions):
     """نمودار میله‌ای درآمد و هزینه روزانه"""
-    
+
     if not transactions:
         return None
-    
+
     daily_income = defaultdict(int)
     daily_expense = defaultdict(int)
-    
+
     for tx in transactions:
         try:
             amount = int(tx[2])
             tx_type = str(tx[3]).strip().lower()
             date = str(tx[6]).split()[0]
-            
+
             if tx_type == 'income':
                 daily_income[date] += amount
             elif tx_type == 'expense':
                 daily_expense[date] += amount
         except:
             continue
-    
+
     all_dates = sorted(set(daily_income.keys()) | set(daily_expense.keys()))
-    
+
     if not all_dates:
         return None
-    
+
     incomes = [daily_income.get(d, 0) for d in all_dates]
     expenses = [daily_expense.get(d, 0) for d in all_dates]
     labels = [d.split('/')[-1] for d in all_dates]
-    
+
     # ایجاد نمودار
     fig, ax1 = plt.subplots(figsize=(14, 7), facecolor='#FAFAFA')
     ax1.set_facecolor('#FAFAFA')
-    
+
     x = np.arange(len(labels))
     width = 0.35
-    
+
     # میله‌ها
     bars1 = ax1.bar(x - width/2, incomes, width, label=reshape_persian('درآمد'),
                     color='#4A90D9', edgecolor='white')
     bars2 = ax1.bar(x + width/2, expenses, width, label=reshape_persian('هزینه'),
                     color='#E74C3C', edgecolor='white')
-    
+
     ax1.set_xlabel(reshape_persian('روز'), fontsize=11)
     ax1.set_ylabel(reshape_persian('مبلغ'), fontsize=11)
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, fontsize=9)
-    
-    # فرمت محور Y - اینجا اصلاح شد
+
     ax1.yaxis.set_major_formatter(
         plt.FuncFormatter(lambda val, pos: format_amount(val))
     )
-    
-    # محور دوم - خط روند
+
+    # ✅ محور دوم - خط روند تراز (اصلاح شده)
     ax2 = ax1.twinx()
-    
+
+    # محاسبه تراز تجمعی
     cumulative_balance = []
     running = 0
     for inc, exp in zip(incomes, expenses):
         running += inc - exp
         cumulative_balance.append(running)
-    
-    ax2.plot(x, cumulative_balance, color='#27AE60', linewidth=2.5,
-             marker='o', markersize=6, label=reshape_persian('تراز'))
-    
+
+    # ✅ رسم خط تراز - بدون منحنی، فقط خط مستقیم بین نقاط
+    ax2.plot(x, cumulative_balance, 
+             color='#27AE60', 
+             linewidth=2.5,
+             marker='o', 
+             markersize=8,
+             markerfacecolor='#27AE60',
+             markeredgecolor='white',
+             markeredgewidth=2,
+             linestyle='-',  # ✅ خط مستقيم
+             zorder=5)  # ✅ روی همه چیز
+
     ax2.set_ylabel(reshape_persian('تراز'), fontsize=11, color='#27AE60')
     ax2.tick_params(axis='y', labelcolor='#27AE60')
-    
-    # فرمت محور Y دوم - اینجا هم اصلاح شد
+
     ax2.yaxis.set_major_formatter(
         plt.FuncFormatter(lambda val, pos: format_amount(val))
     )
-    
+
+    # ✅ تنظیم محدوده محور Y دوم برای وضوح بیشتر
+    if cumulative_balance:
+        min_bal = min(cumulative_balance)
+        max_bal = max(cumulative_balance)
+        padding = (max_bal - min_bal) * 0.1 if max_bal != min_bal else abs(max_bal) * 0.1
+        ax2.set_ylim(min_bal - padding, max_bal + padding)
+
     # عنوان
     ax1.set_title(reshape_persian('روند ورود و خروج پول'),
                   fontsize=14, fontweight='bold', color='#2C3E50', pad=20)
-    
+
     ax1.grid(axis='y', linestyle='--', alpha=0.3)
     ax1.spines['top'].set_visible(False)
-    ax1.legend(loc='upper left')
-    ax2.legend(loc='upper right')
     
+    # ✅ Legend بهتر
+    ax1.legend(loc='upper left', fontsize=10)
+    ax2.legend([reshape_persian('تراز')], loc='upper right', fontsize=10)
+
     plt.tight_layout()
-    
+
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#FAFAFA')
     buf.seek(0)
     plt.close(fig)
-    
+
     return buf
