@@ -61,8 +61,9 @@ def create_pie_chart(transactions):
     total = sum(amounts)
     
     # رنگ‌ها
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', 
-              '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+          '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+          '#E74C3C', '#1ABC9C', '#F39C12', '#9B59B6', '#2ECC71']  # ← 15 رنگ
     
     # ایجاد نمودار
     fig, ax = plt.subplots(figsize=(12, 8), facecolor='#FAFAFA')
