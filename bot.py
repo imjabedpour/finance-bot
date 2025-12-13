@@ -1729,13 +1729,22 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================== کالبک نمودار ==================
 
 async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش نمودار ماهانه"""
+    """نمایش منوی انتخاب نمودار"""
     query = update.callback_query
     await query.answer()
     
-    user_id = update.effective_user.id
+    text = "📊 **نوع نمودار رو انتخاب کن:**"
     
-    await query.edit_message_text("📊 در حال ساخت نمودار ماهانه...")
+    keyboard = [
+        [InlineKeyboardButton("🥧 دسته‌بندی هزینه‌ها", callback_data="chart_pie")],
+        [InlineKeyboardButton("📅 روزانه (۱۴ روز)", callback_data="chart_daily")],
+        [InlineKeyboardButton("📆 هفتگی (۴ هفته)", callback_data="chart_weekly")],
+        [InlineKeyboardButton("🗓️ ماهانه (۳ ماه)", callback_data="chart_monthly")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
     
     try:
         import jdatetime
@@ -2411,6 +2420,184 @@ async def test_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {e}")
 
+# ================== توابع نمودار ==================
+
+async def chart_pie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار دایره‌ای هزینه‌ها"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("📊 در حال ساخت نمودار دایره‌ای...")
+    
+    user_id = update.effective_user.id
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
+    month_pattern = f"{now.year}/{now.month:02d}/%"
+    month_pattern2 = f"{now.year}/{now.month}/%"
+    month_name = f"{now.year}/{now.month:02d}"
+    
+    db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT id, user_id, amount, type, category, description, date
+        FROM transactions
+        WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
+        ORDER BY date DESC
+    ''', (user_id, month_pattern, month_pattern2))
+    
+    transactions = cursor.fetchall()
+    conn.close()
+    
+    if not transactions:
+        await query.message.reply_text(f"❌ تراکنشی برای ماه {month_name} ثبت نشده!")
+        return
+    
+    chart = create_pie_chart(transactions)
+    if chart:
+        await query.message.reply_photo(
+            photo=chart,
+            caption=f"🥧 نمودار دسته‌بندی هزینه‌ها - {month_name}"
+        )
+    else:
+        await query.message.reply_text("❌ هزینه‌ای برای نمایش نیست!")
+
+
+async def chart_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار روزانه"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("📊 در حال ساخت نمودار روزانه...")
+    
+    user_id = update.effective_user.id
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
+    month_pattern = f"{now.year}/{now.month:02d}/%"
+    month_pattern2 = f"{now.year}/{now.month}/%"
+    month_name = f"{now.year}/{now.month:02d}"
+    
+    db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT id, user_id, amount, type, category, description, date
+        FROM transactions
+        WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
+        ORDER BY date DESC
+    ''', (user_id, month_pattern, month_pattern2))
+    
+    transactions = cursor.fetchall()
+    conn.close()
+    
+    if not transactions:
+        await query.message.reply_text(f"❌ تراکنشی برای ماه {month_name} ثبت نشده!")
+        return
+    
+    chart = create_daily_chart(transactions)
+    if chart:
+        await query.message.reply_photo(
+            photo=chart,
+            caption=f"📅 نمودار روزانه - {month_name}"
+        )
+    else:
+        await query.message.reply_text("❌ داده‌ای برای نمایش نیست!")
+
+
+async def chart_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار هفتگی"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("📊 در حال ساخت نمودار هفتگی...")
+    
+    user_id = update.effective_user.id
+    
+    db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # همه تراکنش‌های ۲ ماه اخیر
+    cursor.execute('''
+        SELECT id, user_id, amount, type, category, description, date
+        FROM transactions
+        WHERE user_id = ?
+        ORDER BY date DESC
+    ''', (user_id,))
+    
+    transactions = cursor.fetchall()
+    conn.close()
+    
+    if not transactions:
+        await query.message.reply_text("❌ تراکنشی ثبت نشده!")
+        return
+    
+    chart = create_weekly_chart(transactions)
+    if chart:
+        await query.message.reply_photo(
+            photo=chart,
+            caption="📆 نمودار هفتگی (۴ هفته اخیر)"
+        )
+    else:
+        await query.message.reply_text("❌ داده‌ای برای نمایش نیست!")
+
+
+async def chart_monthly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار ماهانه"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("📊 در حال ساخت نمودار ماهانه...")
+    
+    user_id = update.effective_user.id
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
+    
+    db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # داده‌های ۳ ماه اخیر
+    months_data = []
+    for i in range(3):
+        month = now.month - i
+        year = now.year
+        if month <= 0:
+            month += 12
+            year -= 1
+        
+        pattern1 = f"{year}/{month:02d}/%"
+        pattern2 = f"{year}/{month}/%"
+        
+        cursor.execute('''
+            SELECT COALESCE(SUM(amount), 0)
+            FROM transactions
+            WHERE user_id = ? AND type = 'income' AND (date LIKE ? OR date LIKE ?)
+        ''', (user_id, pattern1, pattern2))
+        income = cursor.fetchone()[0]
+        
+        cursor.execute('''
+            SELECT COALESCE(SUM(amount), 0)
+            FROM transactions
+            WHERE user_id = ? AND type = 'expense' AND (date LIKE ? OR date LIKE ?)
+        ''', (user_id, pattern1, pattern2))
+        expense = cursor.fetchone()[0]
+        
+        months_data.append({
+            'name': f"{year}/{month:02d}",
+            'income': income,
+            'expense': expense
+        })
+    
+    conn.close()
+    
+    # معکوس کردن برای ترتیب زمانی صحیح
+    months_data = months_data[::-1]
+    
+    chart = create_monthly_chart(months_data)
+    if chart:
+        await query.message.reply_photo(
+            photo=chart,
+            caption="🗓️ نمودار ماهانه (۳ ماه اخیر)"
+        )
+    else:
+        await query.message.reply_text("❌ داده‌ای برای نمایش نیست!")
+
 # ================== تابع اصلی ==================
 
 def main():
@@ -2549,12 +2736,12 @@ def main():
     application.add_handler(CallbackQueryHandler(edit_category_selected, pattern="^editcat_"))
     application.add_handler(CallbackQueryHandler(delete_transaction_start, pattern=r"^delete_\d+$"))
     application.add_handler(CallbackQueryHandler(confirm_delete, pattern="^confirm_delete$"))
-# کالبک‌های نمودار
-    application.add_handler(CallbackQueryHandler(chart_menu, pattern="^chart$"))
+    # -------------------- کالبک‌های نمودار --------------------
     application.add_handler(CallbackQueryHandler(chart_pie, pattern="^chart_pie$"))
     application.add_handler(CallbackQueryHandler(chart_daily, pattern="^chart_daily$"))
     application.add_handler(CallbackQueryHandler(chart_weekly, pattern="^chart_weekly$"))
     application.add_handler(CallbackQueryHandler(chart_monthly, pattern="^chart_monthly$"))
+
 
 
     # کالبک گزارش روزانه
