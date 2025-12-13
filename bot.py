@@ -345,32 +345,33 @@ async def chart_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query:
         await query.answer()
-
-    text = (
-        "📊 **نمودارهای مالی**\n\n"
-        "کدوم بازه رو می‌خوای ببینی؟"
-    )
-
+    
+    text = "📊 **نوع نمودار رو انتخاب کن:**"
+    
     keyboard = [
         [
+            InlineKeyboardButton("🥧 دسته‌بندی هزینه‌ها", callback_data="chart_pie"),
+        ],
+        [
             InlineKeyboardButton("📅 روزانه", callback_data="chart_daily"),
+        ],
+        [
             InlineKeyboardButton("📆 هفتگی", callback_data="chart_weekly"),
         ],
         [
             InlineKeyboardButton("🗓️ ماهانه", callback_data="chart_monthly"),
-            InlineKeyboardButton("🥧 دسته‌بندی", callback_data="chart_pie"),
         ],
         [
             InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start"),
         ],
     ]
-
-    markup = InlineKeyboardMarkup(keyboard)
-
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     if query:
-        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=markup)
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
     else:
-        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=markup)
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 
 
 async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2548,12 +2549,12 @@ def main():
     application.add_handler(CallbackQueryHandler(edit_category_selected, pattern="^editcat_"))
     application.add_handler(CallbackQueryHandler(delete_transaction_start, pattern=r"^delete_\d+$"))
     application.add_handler(CallbackQueryHandler(confirm_delete, pattern="^confirm_delete$"))
-
+# کالبک‌های نمودار
     application.add_handler(CallbackQueryHandler(chart_menu, pattern="^chart$"))
+    application.add_handler(CallbackQueryHandler(chart_pie, pattern="^chart_pie$"))
     application.add_handler(CallbackQueryHandler(chart_daily, pattern="^chart_daily$"))
     application.add_handler(CallbackQueryHandler(chart_weekly, pattern="^chart_weekly$"))
     application.add_handler(CallbackQueryHandler(chart_monthly, pattern="^chart_monthly$"))
-    application.add_handler(CallbackQueryHandler(chart_pie, pattern="^chart_pie$"))
 
 
     # کالبک گزارش روزانه
