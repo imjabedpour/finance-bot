@@ -332,85 +332,168 @@ async def all_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 
 
+
 # ================== نمودار ==================
 
+async def chart_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """منوی انتخاب نوع نمودار"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    text = (
+        "📊 **نمودارهای مالی**\n\n"
+        "کدوم بازه رو می‌خوای ببینی؟"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("📅 روزانه", callback_data="chart_daily"),
+            InlineKeyboardButton("📆 هفتگی", callback_data="chart_weekly"),
+        ],
+        [
+            InlineKeyboardButton("🗓️ ماهانه", callback_data="chart_monthly"),
+            InlineKeyboardButton("🥧 دسته‌بندی", callback_data="chart_pie"),
+        ],
+        [
+            InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start"),
+        ],
+    ]
+
+    markup = InlineKeyboardMarkup(keyboard)
+
+    if query:
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=markup)
+    else:
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=markup)
+
+
 async def chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش نمودار ماهانه"""
+    """دستور /chart - نمایش منوی نمودار"""
+    await chart_menu(update, context)
+
+
+async def chart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """کلیک روی دکمه نمودار از منوی اصلی"""
+    await chart_menu(update, context)
+
+
+async def chart_pie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار دایره‌ای"""
+    await send_chart(update, context, chart_type="pie")
+
+
+async def chart_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار روزانه"""
+    await send_chart(update, context, chart_type="daily")
+
+
+async def chart_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار هفتگی"""
+    await send_chart(update, context, chart_type="weekly")
+
+
+async def chart_monthly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار ماهانه"""
+    await send_chart(update, context, chart_type="monthly")
+
+
+async def send_chart(update: Update, context: ContextTypes.DEFAULT_TYPE, chart_type: str):
+    """ساخت و ارسال نمودار"""
+    query = update.callback_query
+    await query.answer()
     user_id = update.effective_user.id
 
-    if update.callback_query:
-        await update.callback_query.answer()
-        msg = await update.callback_query.edit_message_text("📊 در حال ساخت نمودار ماهانه...")
-    else:
-        msg = await update.message.reply_text("📊 در حال ساخت نمودار ماهانه...")
+    msg = await query.edit_message_text("⏳ در حال ساخت نمودار...")
 
     try:
-        import jdatetime
         now = jdatetime.datetime.now(tz=TEHRAN_TZ)
-        
-        # الگوی ماه جاری
-        month_pattern = f"{now.year}/{now.month:02d}/%"
-        month_pattern2 = f"{now.year}/{now.month}/%"
-        month_name = f"{now.year}/{now.month:02d}"
 
-        db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
-        cursor.execute('''
+        cursor.execute("""
             SELECT id, user_id, amount, type, category, description, date
             FROM transactions
-            WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
-            ORDER BY date DESC
-        ''', (user_id, month_pattern, month_pattern2))
-
-        month_transactions = cursor.fetchall()
+            WHERE user_id = ?
+            ORDER BY date ASC
+        """, (user_id,))
+        transactions = cursor.fetchall()
         conn.close()
 
-        print(f"📊 تراکنش‌های ماه {month_name}: {len(month_transactions)}")
-
-        if not month_transactions:
-            await msg.edit_text(f"❌ تراکنشی برای ماه {month_name} ثبت نشده!")
+        if not transactions:
+            await msg.edit_text("❌ تراکنشی ثبت نشده!")
             return
 
-        charts_sent = False
+        from charts import (
+            create_pie_chart,
+            create_daily_chart,
+            create_weekly_chart,
+            create_monthly_chart
+        )
 
-        # نمودار دایره‌ای
-        try:
-            from charts import create_pie_chart, create_bar_chart
-            
-            pie_chart = create_pie_chart(month_transactions)
-            if pie_chart:
-                await update.effective_chat.send_photo(
-                    photo=pie_chart,
-                    caption=f"📊 نمودار هزینه‌ها - ماه {month_name}"
-                )
-                charts_sent = True
-        except Exception as e:
-            print(f"❌ خطا در نمودار دایره‌ای: {e}")
+        chart_img = None
 
-        # نمودار میله‌ای
-        try:
-            bar_chart = create_bar_chart(month_transactions)
-            if bar_chart:
-                await update.effective_chat.send_photo(
-                    photo=bar_chart,
-                    caption=f"📈 درآمد و هزینه - ماه {month_name}"
-                )
-                charts_sent = True
-        except Exception as e:
-            print(f"❌ خطا در نمودار میله‌ای: {e}")
+        if chart_type == "pie":
+            chart_img = create_pie_chart(transactions)
 
-        if charts_sent:
+        elif chart_type == "daily":
+            chart_img = create_daily_chart(transactions)
+
+        elif chart_type == "weekly":
+            chart_img = create_weekly_chart(transactions)
+
+        elif chart_type == "monthly":
+            # داده ۳ ماه اخیر
+            months_data = []
+            for i in range(2, -1, -1):
+                month = now.month - i
+                year = now.year
+                if month <= 0:
+                    month += 12
+                    year -= 1
+
+                pattern1 = f"{year}/{month}/%"
+                pattern2 = f"{year}/{month:02d}/%"
+
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    SELECT
+                        COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)
+                    FROM transactions
+                    WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
+                """, (user_id, pattern1, pattern2))
+
+                income, expense = cursor.fetchone()
+                conn.close()
+
+                month_names = ["", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                               "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
+
+                months_data.append({
+                    "name": month_names[month],
+                    "income": income or 0,
+                    "expense": expense or 0,
+                })
+
+            chart_img = create_monthly_chart(months_data)
+
+        if chart_img:
+            await update.effective_chat.send_photo(photo=chart_img)
             try:
                 await msg.delete()
             except:
                 pass
         else:
-            await msg.edit_text("❌ داده‌ای برای نمودار نیست.")
+            await msg.edit_text("❌ داده‌ای برای این نمودار موجود نیست.")
 
     except Exception as e:
-        print(f"❌ خطای کلی: {e}")
+        print(f"❌ خطای نمودار: {e}")
+        import traceback
+        traceback.print_exc()
         await msg.edit_text(f"❌ خطا: {e}")
 
 
@@ -2460,6 +2543,13 @@ def main():
     application.add_handler(CallbackQueryHandler(edit_category_selected, pattern="^editcat_"))
     application.add_handler(CallbackQueryHandler(delete_transaction_start, pattern=r"^delete_\d+$"))
     application.add_handler(CallbackQueryHandler(confirm_delete, pattern="^confirm_delete$"))
+
+     application.add_handler(CallbackQueryHandler(chart_menu, pattern="^chart$"))
+     application.add_handler(CallbackQueryHandler(chart_daily, pattern="^chart_daily$"))
+     application.add_handler(CallbackQueryHandler(chart_weekly, pattern="^chart_weekly$"))
+     application.add_handler(CallbackQueryHandler(chart_monthly, pattern="^chart_monthly$"))
+     application.add_handler(CallbackQueryHandler(chart_pie, pattern="^chart_pie$"))
+
 
     # کالبک گزارش روزانه
     application.add_handler(CallbackQueryHandler(daily_report_callback, pattern="^daily_report$"))
