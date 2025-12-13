@@ -152,13 +152,30 @@ def create_bar_chart(transactions):
         except:
             continue
 
-    all_dates = sorted(set(daily_income.keys()) | set(daily_expense.keys()))
+    # ✅ مرتب‌سازی صحیح تاریخ‌ها
+    all_dates = sorted(set(daily_income.keys()) | set(daily_expense.keys()), 
+                       key=lambda d: [int(p) for p in d.split('/')])
 
     if not all_dates:
         return None
 
     incomes = [daily_income.get(d, 0) for d in all_dates]
     expenses = [daily_expense.get(d, 0) for d in all_dates]
+    
+    # ✅ دیباگ
+    print("📊 تاریخ‌ها:", all_dates)
+    print("💰 درآمد:", incomes)
+    print("💸 هزینه:", expenses)
+    
+    # محاسبه تراز
+    cumulative_balance = []
+    running = 0
+    for inc, exp in zip(incomes, expenses):
+        running += inc - exp
+        cumulative_balance.append(running)
+    
+    print("📈 تراز تجمعی:", cumulative_balance)
+
     labels = [d.split('/')[-1] for d in all_dates]
 
     # ایجاد نمودار
@@ -183,27 +200,21 @@ def create_bar_chart(transactions):
         plt.FuncFormatter(lambda val, pos: format_amount(val))
     )
 
-    # ✅ محور دوم - خط روند تراز (اصلاح شده)
+    # ✅ محور دوم - خط تراز
     ax2 = ax1.twinx()
 
-    # محاسبه تراز تجمعی
-    cumulative_balance = []
-    running = 0
-    for inc, exp in zip(incomes, expenses):
-        running += inc - exp
-        cumulative_balance.append(running)
-
-    # ✅ رسم خط تراز - بدون منحنی، فقط خط مستقیم بین نقاط
-    ax2.plot(x, cumulative_balance, 
-             color='#27AE60', 
-             linewidth=2.5,
-             marker='o', 
-             markersize=8,
-             markerfacecolor='#27AE60',
-             markeredgecolor='white',
-             markeredgewidth=2,
-             linestyle='-',  # ✅ خط مستقيم
-             zorder=5)  # ✅ روی همه چیز
+    # ✅ رسم خط تراز - ساده و مستقیم
+    line = ax2.plot(x, cumulative_balance, 
+                    color='#27AE60', 
+                    linewidth=3,
+                    marker='o', 
+                    markersize=10,
+                    markerfacecolor='white',
+                    markeredgecolor='#27AE60',
+                    markeredgewidth=3,
+                    linestyle='-',
+                    zorder=10,
+                    label=reshape_persian('تراز'))
 
     ax2.set_ylabel(reshape_persian('تراز'), fontsize=11, color='#27AE60')
     ax2.tick_params(axis='y', labelcolor='#27AE60')
@@ -212,13 +223,6 @@ def create_bar_chart(transactions):
         plt.FuncFormatter(lambda val, pos: format_amount(val))
     )
 
-    # ✅ تنظیم محدوده محور Y دوم برای وضوح بیشتر
-    if cumulative_balance:
-        min_bal = min(cumulative_balance)
-        max_bal = max(cumulative_balance)
-        padding = (max_bal - min_bal) * 0.1 if max_bal != min_bal else abs(max_bal) * 0.1
-        ax2.set_ylim(min_bal - padding, max_bal + padding)
-
     # عنوان
     ax1.set_title(reshape_persian('روند ورود و خروج پول'),
                   fontsize=14, fontweight='bold', color='#2C3E50', pad=20)
@@ -226,9 +230,10 @@ def create_bar_chart(transactions):
     ax1.grid(axis='y', linestyle='--', alpha=0.3)
     ax1.spines['top'].set_visible(False)
     
-    # ✅ Legend بهتر
-    ax1.legend(loc='upper left', fontsize=10)
-    ax2.legend([reshape_persian('تراز')], loc='upper right', fontsize=10)
+    # Legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right', fontsize=10)
 
     plt.tight_layout()
 
@@ -238,3 +243,4 @@ def create_bar_chart(transactions):
     plt.close(fig)
 
     return buf
+
