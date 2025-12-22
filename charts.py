@@ -30,7 +30,7 @@ def format_amount(amount):
     return str(int(amount))
 
 
-def create_pie_chart(transactions):
+def create_pie_chart(transactions, title=None):
     """نمودار دایره‌ای هزینه‌ها"""
     if not transactions:
         return None
@@ -100,7 +100,9 @@ def create_pie_chart(transactions):
               bbox_to_anchor=(1, 0.5),
               fontsize=10)
 
-    ax.set_title(f'{reshape_farsi("هزینه‌های ماهانه")}\n{reshape_farsi(f"مجموع: {total:,} ریال")}',
+    # عنوان داینامیک
+    chart_title = title if title else "هزینه‌های ماهانه"
+    ax.set_title(f'{reshape_farsi(chart_title)}\n{reshape_farsi(f"مجموع: {total:,} ریال")}',
                  fontsize=14, fontweight='bold', color='#2C3E50', pad=20)
 
     centre_circle = plt.Circle((0, 0), 0.50, fc='#FAFAFA')
@@ -117,6 +119,7 @@ def create_pie_chart(transactions):
     plt.close(fig)
 
     return buf
+
 
 
 def create_daily_chart(transactions):

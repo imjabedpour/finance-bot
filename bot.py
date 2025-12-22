@@ -2543,19 +2543,64 @@ async def test_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================== توابع نمودار ==================
 
 async def chart_pie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمودار دایره‌ای هزینه‌ها"""
+    """منوی انتخاب ماه برای نمودار دایره‌ای"""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("📊 در حال ساخت نمودار دایره‌ای...")
+    
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
+    
+    # اسامی ماه‌های فارسی
+    month_names = ["", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                   "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
+    
+    # ساخت دکمه‌ها برای ۳ ماه اخیر
+    keyboard = []
+    
+    for i in range(3):
+        month = now.month - i
+        year = now.year
+        if month <= 0:
+            month += 12
+            year -= 1
+        
+        month_label = f"{month_names[month]} {year}"
+        callback_data = f"pie_month_{year}_{month}"
+        keyboard.append([InlineKeyboardButton(f"📅 {month_label}", callback_data=callback_data)])
+    
+    # دکمه ۳ ماهه
+    keyboard.append([InlineKeyboardButton("📊 مجموع ۳ ماه اخیر", callback_data="pie_3months")])
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="chart")])
+    
+    text = "🥧 **نمودار دسته‌بندی هزینه‌ها**\n\nکدوم بازه زمانی رو می‌خوای؟"
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+
+
+async def chart_pie_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار دایره‌ای برای یک ماه خاص"""
+    query = update.callback_query
+    await query.answer()
+    
+    # استخراج سال و ماه از callback_data
+    # فرمت: pie_month_1403_9
+    parts = query.data.split("_")
+    year = int(parts[2])
+    month = int(parts[3])
+    
+    month_names = ["", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                   "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
+    month_label = f"{month_names[month]} {year}"
+    
+    await query.edit_message_text(f"📊 در حال ساخت نمودار {month_label}...")
     
     user_id = update.effective_user.id
-    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
-    month_pattern = f"{now.year}/{now.month:02d}/%"
-    month_pattern2 = f"{now.year}/{now.month}/%"
-    month_name = f"{now.year}/{now.month:02d}"
     
-    db_path = '/app/data/financial_bot.db' if os.path.exists('/app/data') else 'financial_bot.db'
-    conn = sqlite3.connect(db_path)
+    # الگوی جستجو
+    pattern1 = f"{year}/{month:02d}/%"
+    pattern2 = f"{year}/{month}/%"
+    
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -2563,23 +2608,107 @@ async def chart_pie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         FROM transactions
         WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
         ORDER BY date DESC
-    ''', (user_id, month_pattern, month_pattern2))
+    ''', (user_id, pattern1, pattern2))
     
     transactions = cursor.fetchall()
     conn.close()
     
     if not transactions:
-        await query.message.reply_text(f"❌ تراکنشی برای ماه {month_name} ثبت نشده!")
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="chart_pie")]]
+        await query.message.reply_text(
+            f"❌ تراکنشی برای {month_label} ثبت نشده!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return
     
-    chart = create_pie_chart(transactions)
+    # فیلتر فقط هزینه‌ها
+    expenses = [t for t in transactions if t[3] == 'expense']
+    
+    if not expenses:
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="chart_pie")]]
+        await query.message.reply_text(
+            f"❌ هزینه‌ای برای {month_label} ثبت نشده!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    chart = create_pie_chart(transactions, title=f"هزینه‌های {month_label}")
     if chart:
+        keyboard = [[InlineKeyboardButton("🔙 انتخاب ماه دیگر", callback_data="chart_pie")]]
         await query.message.reply_photo(
             photo=chart,
-            caption=f"🥧 نمودار دسته‌بندی هزینه‌ها - {month_name}"
+            caption=f"🥧 نمودار دسته‌بندی هزینه‌ها - {month_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
     else:
-        await query.message.reply_text("❌ هزینه‌ای برای نمایش نیست!")
+        await query.message.reply_text("❌ خطا در ساخت نمودار!")
+
+
+async def chart_pie_3months(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمودار دایره‌ای برای ۳ ماه اخیر"""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text("📊 در حال ساخت نمودار ۳ ماه اخیر...")
+    
+    user_id = update.effective_user.id
+    now = jdatetime.datetime.now(tz=TEHRAN_TZ)
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    all_transactions = []
+    
+    # جمع‌آوری تراکنش‌های ۳ ماه اخیر
+    for i in range(3):
+        month = now.month - i
+        year = now.year
+        if month <= 0:
+            month += 12
+            year -= 1
+        
+        pattern1 = f"{year}/{month:02d}/%"
+        pattern2 = f"{year}/{month}/%"
+        
+        cursor.execute('''
+            SELECT id, user_id, amount, type, category, description, date
+            FROM transactions
+            WHERE user_id = ? AND (date LIKE ? OR date LIKE ?)
+        ''', (user_id, pattern1, pattern2))
+        
+        all_transactions.extend(cursor.fetchall())
+    
+    conn.close()
+    
+    if not all_transactions:
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="chart_pie")]]
+        await query.message.reply_text(
+            "❌ تراکنشی در ۳ ماه اخیر ثبت نشده!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    # فیلتر فقط هزینه‌ها
+    expenses = [t for t in all_transactions if t[3] == 'expense']
+    
+    if not expenses:
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="chart_pie")]]
+        await query.message.reply_text(
+            "❌ هزینه‌ای در ۳ ماه اخیر ثبت نشده!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    chart = create_pie_chart(all_transactions, title="هزینه‌های ۳ ماه اخیر")
+    if chart:
+        keyboard = [[InlineKeyboardButton("🔙 انتخاب ماه دیگر", callback_data="chart_pie")]]
+        await query.message.reply_photo(
+            photo=chart,
+            caption="🥧 نمودار دسته‌بندی هزینه‌ها - ۳ ماه اخیر",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await query.message.reply_text("❌ خطا در ساخت نمودار!")
 
 
 async def chart_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2862,6 +2991,8 @@ def main():
     application.add_handler(CallbackQueryHandler(confirm_delete, pattern="^confirm_delete$"))
     # -------------------- کالبک‌های نمودار --------------------
     application.add_handler(CallbackQueryHandler(chart_pie, pattern="^chart_pie$"))
+    application.add_handler(CallbackQueryHandler(chart_pie_month, pattern="^pie_month_"))
+    application.add_handler(CallbackQueryHandler(chart_pie_3months, pattern="^pie_3months$"))
     application.add_handler(CallbackQueryHandler(chart_daily, pattern="^chart_daily$"))
     application.add_handler(CallbackQueryHandler(chart_weekly, pattern="^chart_weekly$"))
     application.add_handler(CallbackQueryHandler(chart_monthly, pattern="^chart_monthly$"))
